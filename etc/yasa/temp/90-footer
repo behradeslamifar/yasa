@@ -1,0 +1,4 @@
+
+ENV{valid}=="1", ENV{valid}="", ATTR{authorized}="1", GOTO="oakusb_rules_end"
+
+LABEL="oakusb_rules_end"

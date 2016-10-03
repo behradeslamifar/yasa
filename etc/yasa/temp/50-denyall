@@ -1,0 +1,4 @@
+
+## make hubs deauthorized all devices by default
+TEST=="authorized_default", ATTR{authorized_default}="0", GOTO="oakusb_rules_end"
+
