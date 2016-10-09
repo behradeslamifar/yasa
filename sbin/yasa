@@ -1,23 +1,19 @@
 #!/bin/bash
 
-# host base dir
-HOST_DIR='/etc/puppet/files/hosts/'
+# default file
+TEMPHOME='/etc/yasa/skell'
 
-# usblock udev rules file
-RULES_FILE='/etc/udev/rules.d/10-usblock.rules'
+# puppet home
+PUPPETHOME='/etc/yasa/puppet'
 
-# default white list
-DEF_WHITELIST_FILE='/etc/usblock/20-default-whitelist'
+# white list files
+WRULES='dev.allow'
+WCRULES='class.allow'
 
-# white list rule
-WHITELIST_FILE='/etc/usblock/80-whitelist'
-
-# usblock rules
-RULES='/etc/usblock/usb.allow'
-
-# default rules 
-DEF_RULES='/etc/usblock/usb.default'
-
+# clients home
+# $CLIENTHOME/$fqdn/
+CLIENTHOME='/etc/yasa/puppet/files/hosts
+'
 rule_exist() {
 	local hostid="$1"
         local vendorid="$2"

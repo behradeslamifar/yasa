@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# This is install script for development enviroment
+# This is not free software yes. I hope its free soon
+
+cp -r /home/behrad/Behrad\ Eslamifar/My-Script/git/yasa/etc/yasa/* /etc/yasa/
+cp /home/behrad/Behrad\ Eslamifar/My-Script/git/yasa/sbin/yasa /sbin/
+

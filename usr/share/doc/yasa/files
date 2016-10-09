@@ -1,0 +1,17 @@
+### list of file
+## puppet
+/etc/puppet/modules/yasa
+/etc/puppet/modules/yasa -> /etc/yasa/puppet
+
+## yasa
+/etc/yasa
+/etc/yasa/skell
+/etc/yasa/puppet
+/etc/yasa/puppet/files/hosts
+/etc/yasa/puppet/manifests
+/etc/yasa/puppet/manifests/site.pp
+
+## client side
+/etc/udev/rules.d/10-custom.rules
+
+
