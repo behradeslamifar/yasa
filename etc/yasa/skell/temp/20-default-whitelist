@@ -1,3 +1,0 @@
-
-ATTR{bInterfaceClass}=="03", ATTRS{authorized_default}=="1", GOTO="oakusb_rules_end"
-ATTR{bInterfaceClass}=="09", ATTRS{authorized_default}=="1", GOTO="oakusb_rules_end"

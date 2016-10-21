@@ -3,6 +3,12 @@
 # This is install script for development enviroment
 # This is not free software yes. I hope its free soon
 
-cp -r /home/behrad/Behrad\ Eslamifar/My-Script/git/yasa/etc/yasa/* /etc/yasa/
+rsync -av --delete --exclude 'hosts' /home/behrad/Behrad\ Eslamifar/My-Script/git/yasa/etc/yasa/ /etc/yasa/
 cp /home/behrad/Behrad\ Eslamifar/My-Script/git/yasa/sbin/yasa /sbin/
+if [ ! -L /etc/puppet/modules/yasa ] 
+then
+	rm -r /etc/puppet/modules/yasa 2> /dev/null
+	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+fi
 
+exit 0

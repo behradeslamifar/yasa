@@ -1,4 +1,8 @@
 
 ENV{valid}=="1", ENV{valid}="", ATTR{authorized}="1", GOTO="oakusb_rules_end"
+ENV{valid}=="2", ENV{valid}="", RUN+='bash -c "name=/sys%devpath/ ; echo 1 > ${name%/*}"' GOTO="oakusb_rules_end"
+
+TEST=="bInterfaceClass", RUN+='bash -c "name=/sys%devpath/ ; echo 0 > ${name%/*}"'
+TEST=="authorized", ATTR{authorized}="0"
 
 LABEL="oakusb_rules_end"
