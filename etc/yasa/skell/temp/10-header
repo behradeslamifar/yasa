@@ -5,5 +5,6 @@ ACTION!="add", GOTO="oakusb_rules_end"
 SUBSYSTEM!="usb", GOTO="oakusb_rules_end"
 
 # Send usb device information to syslog
-TEST=="authorized", RUN+="/usr/bin/logger -p local0.info 'Device:%E{ID_MODEL} VID:%E{ID_VENDOR_ID} PID:%E{ID_MODEL_ID} Serial:%E{ID_SERIAL_SHORT}'"
+TEST=="authorized", TEST!="authorized_default", RUN+="/usr/bin/logger -p local0.info 'Device:%E{ID_MODEL} VID:%E{ID_VENDOR_ID} PID:%E{ID_MODEL_ID} Serial:%E{ID_SERIAL_SHORT}'"
+
 

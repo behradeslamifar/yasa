@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# development state
+develop=1
+
 # default file
 TEMPHOME='/etc/yasa/skell'
 
@@ -11,7 +14,7 @@ WDEVICE='dev.allow'
 WCLASS='class.allow'
 
 # default policy (class, deauthorized)
-DEFPOL='default'
+#DEFPOL='default'
 
 # clients home
 # $CLIENTHOME/$fqdn/
@@ -58,7 +61,7 @@ write_rule() {
 
 	echo "" > "$basepath/temp/25-default-whitelist"
 	cat "$basepath/temp/$WCLASS" | grep -v "^#\|^$" | while read line; do
-                echo "ATTR{bInterfaceClass}==\"$line\", ENV{valid}=\"2\""  >> "$basepath/temp/20-default-whitelist"
+                echo "ATTR{bInterfaceClass}==\"$line\", ENV{valid}=\"2\""  >> "$basepath/temp/25-default-whitelist"
 	done
 	
 	local ar=()
@@ -83,9 +86,6 @@ write_rule() {
 		if [ ! -z "$(echo $I | grep '10-header$')" ]
 		then
 			cat $I > "$basepath/etc/10-usblock.rules"
-		elif [  ! -z "$(echo $I | grep '50-denyall$')" ] && [ ! -z "$(cat $basepath/temp/default | grep class)" ]
-		then 
-			continue
 		else 
 			cat $I >> "$basepath/etc/10-usblock.rules"
 		fi
@@ -187,7 +187,7 @@ addnew() {
 	[ -f "$INPUT2" ] && rm $INPUT2
 	[ -f "$OUTPUT" ] && rm $OUTPUT
 
-	#puppet kick ${newwhite[1]#*:}
+	[ "$develop" != 1 ] &&  puppet kick ${newwhite[1]#*:}
 
 	return 0	
 }
@@ -268,7 +268,7 @@ addnewip() {
 	[ -f "$INPUT2" ] && rm $INPUT2
 	[ -f "$OUTPUT" ] && rm $OUTPUT
 	
-	#puppet kick ${newwhite[1]#*:}
+	[ "$develop" != 1 ] &&  puppet kick ${newwhite[1]#*:}
 
 	return 0
 }
@@ -310,30 +310,33 @@ addnewclass() {
 	# save menu output
 	local class=$(cat $OUTPUT | tr -d 'h')
 
-	# count number of host
-	local hostsum=$(ls $CLIENTHOME | wc -l)
-	((hostsum++))
-
-	dialog --title "Choos host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts on $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
-
-	for i in $(<$OUTPUT)	
-	do
-		if [ "$i" == "all" ]
-		then
-			for j in $CLIENTHOME/*
-			do
-				def_rule_exist ${j##*/} $class && continue
-				echo $class >> $j/temp/$WCLASS			
-				write_rule "$j/"
-			done
-			break
-		fi
-		
-		# if all not selected
-		def_rule_exist $i $class && continue
-		echo $class >> $CLIENTHOME/$i/temp/$WCLASS			
-		write_rule $CLIENTHOME/$i
-	done
+	if [ ! -z "$class" ]
+	then
+		# count number of host
+		local hostsum=$(ls $CLIENTHOME | wc -l)
+		((hostsum++))
+	
+		dialog --title "Choos host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts on $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
+	
+		for i in $(<$OUTPUT)	
+		do
+			if [ "$i" == "all" ]
+			then
+				for j in $CLIENTHOME/*
+				do
+					def_rule_exist ${j##*/} $class && continue
+					echo $class >> $j/temp/$WCLASS			
+					write_rule "$j/"
+				done
+				break
+			fi
+			
+			# if all not selected
+			def_rule_exist $i $class && continue
+			echo $class >> $CLIENTHOME/$i/temp/$WCLASS			
+			write_rule $CLIENTHOME/$i
+		done
+	fi
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
@@ -378,7 +381,7 @@ showwhiteclass() {
 	local hostsum=$(ls $CLIENTHOME | wc -l)
 	((hostsum++))
 
-	dialog --title "Choos host(s)" --menu "Choose one/more/all host(s) to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+	dialog --title "Choose host(s)" --menu "Choose one/more/all host(s) to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
 
 	# save menu output
 	local hostid=$(<$OUTPUT)
@@ -405,7 +408,7 @@ deldev() {
 	# define array
 	local ar=()
 
-	dialog --title "Choos host(s)" --menu "Choose one/more/all host(s) to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+	dialog --title "Choose host(s)" --menu "Choose one/more/all host(s) to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
 
 	# save menu output
 	local hostid=$(<$OUTPUT)
@@ -418,7 +421,7 @@ deldev() {
 			((linenum++))
 	                comment=$line; count=1;
 	                continue
-	        elif [ "$count" = "1" ]
+	        elif [ "$count" = "1" ] && [ ! -z "$(echo $line | grep "^# From")" ]
 	        then
 	                device=$(echo $line | grep -o "Device:.*$")
 	                ar+=($linenum "$comment $device")
@@ -434,26 +437,26 @@ deldev() {
 
 	echo "" > $OUTPUT
 	linenum=0
-	while read line 
+
+	while read line
 	do
-	        if [ ! -z "$(echo $line | grep "^# comment" )" ]
-	        then
+		if [ ! -z "$(echo $line | grep "^# comment")" ]
+		then
+			ucomment=$line
 			((linenum++))
-			if [ "$linenum" = "$devicenum" ]
+		elif [ ! -z "$(echo $line | grep "^# From:")" ]
+		then
+			scomment=$line
+		elif [ ! -z "$(echo $line | grep "^[0-9]" )" ]
+		then
+			if  [ "$linenum" != "$devicenum" ]
 			then
-				continue
-			else
-				echo "$line" >> $OUTPUT
+				echo -e "$ucomment\n$scomment\n$line" >> $OUTPUT
 			fi
-	        else
-			if [ "$linenum" = "$devicenum" ]
-			then
-				continue
-			else
-				echo "$line" >> $OUTPUT
-			fi
-	        fi
-	done <$CLIENTHOME/$hostid/temp/$WDEVICE	
+		else
+			echo $line >> $OUTPUT
+		fi
+	done < $host_dir/temp/$WDEVICE
 
  	cp $OUTPUT $CLIENTHOME/$hostid/temp/$WDEVICE	
 
@@ -463,11 +466,47 @@ deldev() {
 	# generate udev rule
 	write_rule "$CLIENTHOME/$hostid/"
 
+	# run puppet kick
+	[ "$develop" != 1 ] && puppet kick $hostid
+
 	return 0
 }
 
 delclass() {
-	echo "N"
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+	# count number of host
+	local hostsum=$(ls $CLIENTHOME | wc -l)
+	((hostsum++))
+
+	# define array
+	local ar=()
+
+	dialog --title "Choose host(s)" --menu "Choose one/more/all host(s) to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+
+	# save menu output
+	local hostid=$(<$OUTPUT)
+	local linenum=0
+
+	dialog --title "Choose host(s)" --menu "Choose a class for delete from whitelist" 10 60 5 $(cat -n $CLIENTHOME/$hostid/temp/$WCLASS) 2> $OUTPUT
+
+	local classnum=$(<$OUTPUT)
+	sed -i "$classnum d" $CLIENTHOME/$hostid/temp/$WCLASS
+
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+
+	# generate udev rule
+	write_rule "$CLIENTHOME/$hostid/"
+
+	# run puppet kick
+	[ "$develop" != 1 ] && puppet kick $hostid
+
+	return 0
 
 }
 
@@ -498,9 +537,6 @@ addnewhost() {
 		write_rule $CLIENTHOME/$hostid
 	fi
 
-		
-
-
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
 
@@ -528,62 +564,140 @@ openhost() {
         local hostid=$(<$OUTPUT)
 
 	# open all usb device, must restart system
-	cp /etc/yasa/etc/10-usblock-open.rules $CLIENTHOME/$hostid/etc/10-usblock.rules
+	# cp /etc/yasa/etc/10-usblock-open.rules $CLIENTHOME/$hostid/etc/10-usblock.rules
+
+	if [ -z "$(grep "devpath 1" $CLIENTHOME/$hostid/temp/90-footer )" ]
+	then
+		sed -i 's/devpath 0/devpath 1/' $CLIENTHOME/$hostid/temp/90-footer
+	else
+		sed -i 's/devpath 1/devpath 0/' $CLIENTHOME/$hostid/temp/90-footer
+	fi
 	
+        # generate udev rule
+        write_rule "$CLIENTHOME/$hostid/"
+
 	# run puppet kick
-	#puppet kick $hostid
+	[ "$develop" != 1 ] && puppet kick $hostid
 }
 
 yasacron() {
-	local hostid
-	
+        # temperorly file 
+        TEMP=$(mktemp /tmp/usb.XXXXXXXX)
+
+        # trap and delete temp file
+        trap "rm $TEMP; exit" SIGHUP SIGINT SIGTERM
+
+	# save current time
+	local currenttime=$(date +"%s")
+
+	# variable for save dev.allow line
+	local scomment
+	local ucomment
+	local line
+
+	# remove dev allow rule based on expire time
+	for host_dir in $CLIENTHOME/*
+	do
+		if [ -d "$host_dir" ]
+		then
+			while read line
+			do
+				if [ ! -z "$(echo $line | grep "^# comment")" ]
+				then
+					ucomment=$line
+				elif [ ! -z "$(echo $line | grep "^# From:")" ]
+				then
+					scomment=$line
+				elif [ ! -z "$(echo $line | grep "^[0-9]" )" ]
+				then
+					if [ ! -z "$(echo $line  | awk '($1 > value ) ' value=$currenttime)" ]
+					then
+						echo -e "$ucomment\n$scomment\n$line" >> $TEMP
+					fi
+				else
+					echo $line >> $TEMP
+				fi
+			done < $host_dir/temp/$WDEVICE
+			cp $TEMP $host_dir/temp/$WDEVICE
+		else
+			continue
+		fi
+
+		# write rule for each
+		write_rule $host_dir
+
+		# deploy rule for each host
+		[ "$develop" != 1 ] && puppet kick $hostid
+	done
+
+	# remove class based on expire time
+	# not implemented
+
+	# remove temp file
+	[ -f "$TEMP" ] && rm $TEMP
+
 }
 
-# Menu input
-MAININPUT=$(mktemp /tmp/usb.XXXXXXXX)
+yasaauth() {
+	local name=/sys$1
+	local value=$2
+	echo "$value" > "${name%/*}/authorized" 2>> /dev/null
+}
 
-# trap and delete temp file
-trap "rm $MAININPUT; exit" SIGHUP SIGINT SIGTERM
-
-while true
-do
-        ### display main menu ###
-        /usr/bin/dialog --clear --backtitle "Usb lock main menu" \
-        --title "[ M A I N - M E N U ]" \
-        --menu "You can use the UP/DOWN arrow keys, the first \
-        letter of the choice as a hot key, or the \
-        number keys 1-9 to choose an option.\
-        Choose the TASK" 19 65 10 \
-        1 "Add new device based on last ten entry" \
-        2 "Add new device based on client IP address" \
-	3 "Add new class to white list" \
-	4 "Show device white list" \
-	5 "Show class white list" \
-	6 "Delete device from white list" \
-	7 "Delete class from white list" \
-	8 "Add new host" \
-	9 "Open all usb port" \
-        Exit "Exit and Logout" 2>"${MAININPUT}"
-
-        menuitem=$(<"${MAININPUT}")
-
-
-        # make decsion
-        case $menuitem in
-                1) addnew;;
-                2) addnewip;;
-		3) addnewclass;;
-		4) showwhitedev;;
-		5) showwhiteclass;;
-		6) deldev;;
-		7) delclass;;
-		8) addnewhost;;
-		9) openhost;;
-                Exit) echo "Bye"; break;;
-        esac
-
-done
-
+# non interactive mod
+if [ "$1" = "cron" ]
+then
+	yasacron
+elif [ "$1" = "auth" ]
+then
+	yasaauth $2 $3
+else
+	# Menu input
+	MAININPUT=$(mktemp /tmp/usb.XXXXXXXX)
+	
+	# trap and delete temp file
+	trap "rm $MAININPUT; exit" SIGHUP SIGINT SIGTERM
+	
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Usb lock main menu" \
+	        --title "[ M A I N - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 19 65 10 \
+	        1 "Add new device based on last ten entry" \
+	        2 "Add new device based on client IP address" \
+		3 "Add new class to white list" \
+		4 "Show device white list" \
+		5 "Show class white list" \
+		6 "Delete device from white list" \
+		7 "Delete class from white list" \
+		8 "Add new host" \
+		9 "Open all usb port" \
+	        Exit "Exit and Logout" 2>"${MAININPUT}"
+	
+	        menuitem=$(<"${MAININPUT}")
+	
+	
+	        # make decsion
+	        case $menuitem in
+	                1) addnew;;
+	                2) addnewip;;
+			3) addnewclass;;
+			4) showwhitedev;;
+			5) showwhiteclass;;
+			6) deldev;;
+			7) delclass;;
+			8) addnewhost;;
+			9) openhost;;
+	                Exit) echo "Bye"; break;;
+	        esac
+	
+	done
+fi
+	
 [ -f "$MAININPUT" ] && rm $MAININPUT 
 
 exit 0
