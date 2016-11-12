@@ -12,6 +12,7 @@ PUPPETHOME='/etc/yasa/puppet'
 # white list files
 WDEVICE='dev.allow'
 WCLASS='class.allow'
+WDEF='default'
 
 # default policy (class, deauthorized)
 #DEFPOL='default'
@@ -319,7 +320,7 @@ addnewclass() {
 		local hostsum=$(ls $CLIENTHOME | wc -l)
 		((hostsum++))
 	
-		dialog --title "Choos host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts on $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
+		dialog --title "Choose host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts off $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
 	
 		for i in $(<$OUTPUT)	
 		do
@@ -364,8 +365,10 @@ showwhitedev() {
 
 	# save menu output
 	local hostid=$(<$OUTPUT)
-
-	dialog --textbox $CLIENTHOME/$hostid/temp/$WDEVICE 10 80
+	
+	# change unix time to normal time
+	sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $CLIENTHOME/$hostid/temp/$WDEVICE > $OUTPUT
+	dialog --textbox $OUTPUT 10 80
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
@@ -508,12 +511,22 @@ delclass() {
 
 	# save menu output
 	local hostid=$(<$OUTPUT)
-	local linenum=0
 
 	dialog --title "Choose host(s)" --menu "Choose a class for delete from whitelist" 10 60 5 $(cat -n $CLIENTHOME/$hostid/temp/$WCLASS) 2> $OUTPUT
 
-	local classnum=$(<$OUTPUT)
-	sed -i "$classnum d" $CLIENTHOME/$hostid/temp/$WCLASS
+	local linenumber=$(<$OUTPUT)
+	local classnum=$(sed -n "$linenumber p" $CLIENTHOME/$hostid/temp/$WCLASS)
+	if [ "$classnum" == "09" ]
+	then
+		dialog --title " Warning " --yesno "Delete \"09 Hub\" class, may cause disable all usb port. \nDo you realy want to delete?" 6 60
+		local response=$?
+		if [ "$response" == "0" ]
+		then
+			sed -i "$linenumber d" $CLIENTHOME/$hostid/temp/$WCLASS
+		fi
+	else
+		sed -i "$linenumber d" $CLIENTHOME/$hostid/temp/$WCLASS
+	fi
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
@@ -566,7 +579,71 @@ addnewhost() {
 
 }
 
-openhost() {
+delhost() {
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+	# hostname variable
+	local hostid
+	
+
+	# list all hosts
+	dialog --title "Choose host(s) to delete from Yasa" --checklist "Choose one/more/all host(s) to delete from Yasa" 11 60 10 all hosts off $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
+	
+	if [ -z "$(cat $OUTPUT)" ]
+	then 
+	        # remove temp file
+	        [ -f "$OUTPUT" ] && rm $OUTPUT
+
+        	return 0
+	fi
+
+	dialog --title " Warning " --yesno "Do you realy want delete (a) host(s)?" 6 50
+	local response=$?
+        if [ "$response" == "1" ]
+        then
+                 # remove temp file
+                 [ -f "$OUTPUT" ] && rm $OUTPUT
+
+                 return 0
+        fi
+
+	for i in $(<$OUTPUT)	
+		do
+			# if all selected
+			if [ "$i" == "all" ]
+			then
+				dialog --title " Warning " --yesno "After delete all hosts you cant manage any change on hosts. \nDo you realy want delete all hosts?" 7 60
+		                local response=$?
+		                if [ "$response" == "0" ]
+		                then
+					rm -r  $CLIENTHOME/* && dialog --msgbox "All hosts deleted successfuly." 5 40
+		                fi
+				break
+
+			        # remove temp file
+			        [ -f "$OUTPUT" ] && rm $OUTPUT
+	
+        			return 0
+
+			fi
+			
+			# if all not selected
+			rm -r $CLIENTHOME/$i
+	done
+	
+	dialog --msgbox "Host(s) deleted successfuly." 5 40
+
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+
+	return 0
+}
+
+trigger_def() {
 	# temp file for menu output
 	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
 
@@ -580,19 +657,21 @@ openhost() {
         local hostsum=$(ls $CLIENTHOME | wc -l)
         ((hostsum++))
 
-        dialog --title "Choose host(s)" --menu "Choose one host to open all usb port" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+	#dialog --title "Choose host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts off $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
+        dialog --title "Choose host(s)" --menu "Choose one host to active/deactive restrictions" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
 
         # save menu output
         local hostid=$(<$OUTPUT)
 
-	# open all usb device, must restart system
-	# cp /etc/yasa/etc/10-usblock-open.rules $CLIENTHOME/$hostid/etc/10-usblock.rules
-
-	if [ -z "$(grep "devpath 1" $CLIENTHOME/$hostid/temp/90-footer )" ]
+	if [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "0" ]
 	then
 		sed -i 's/devpath 0/devpath 1/' $CLIENTHOME/$hostid/temp/90-footer
+		echo "1" > $CLIENTHOME/$hostid/temp/$WDEF
+		dialog --msgbox "USB Restrictions Deactivated" 5 40
 	else
 		sed -i 's/devpath 1/devpath 0/' $CLIENTHOME/$hostid/temp/90-footer
+		echo "0" > $CLIENTHOME/$hostid/temp/$WDEF
+		dialog --msgbox "USB Restrictions Activated" 5 40
 	fi
 	
         # generate udev rule
@@ -603,6 +682,82 @@ openhost() {
 
 	# run puppet kick
 	[ "$develop" != 1 ] && puppet kick $hostid
+}
+
+report_active() {
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+	for i in $CLIENTHOME/*
+	do 
+		if [ "$(cat $i/temp/default)" == "0" ]
+		then
+			j=${i##*/} 
+			echo "$j" >> $OUTPUT
+		fi
+	done
+	dialog --textbox $OUTPUT 10 40	
+
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+
+	return 0
+
+}
+
+report_deactive() {
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+	for i in $CLIENTHOME/*
+	do 
+		if [ "$(cat $i/temp/default)" == "1" ]
+		then
+			j=${i##*/} 
+			echo "$j" >> $OUTPUT
+		fi
+	done
+	dialog --textbox $OUTPUT 10 40	
+	
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+
+	return 0
+
+}
+
+report() {
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Report Menu" \
+	        --title "[ R E P O R T - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 12 55 6 \
+		1 "Show active client" \
+		2 "Show deactive client" \
+	        Exit "Retrun to main menu" 2>"${MAININPUT}"
+	
+	        menuitem=$(<"${MAININPUT}")
+	
+	
+	        # make decsion
+	        case $menuitem in
+			1) report_active;;
+			2) report_deactive;;
+	                Exit) break;;
+	        esac
+	
+	done
+
 }
 
 yasacron() {
@@ -693,16 +848,18 @@ else
 	        --menu "You can use the UP/DOWN arrow keys, the first \
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 19 65 10 \
+	        Choose the TASK" 21 65 12 \
 		1 "Add new host" \
-	        2 "Add new device based on last ten entry" \
-	        3 "Add new device based on client IP address" \
-		4 "Add new class to white list" \
-		5 "Show device white list" \
-		6 "Show class white list" \
-		7 "Delete device from white list" \
-		8 "Delete class from white list" \
-		9 "Trigger state (allow all/deny all)" \
+		2 "Delete hosts" \
+	        3 "Add new device based on last ten entry" \
+	        4 "Add new device based on client IP address" \
+		5 "Add new class to white list" \
+		6 "Show device white list" \
+		7 "Show class white list" \
+		8 "Delete device from white list" \
+		9 "Delete class from white list" \
+		10 "Trigger state (allow all/deny all)" \
+		11 "Report" \
 	        Exit "Exit and Logout" 2>"${MAININPUT}"
 	
 	        menuitem=$(<"${MAININPUT}")
@@ -711,14 +868,16 @@ else
 	        # make decsion
 	        case $menuitem in
 			1) addnewhost;;
-	                2) addnew;;
-	                3) addnewip;;
-			4) addnewclass;;
-			5) showwhitedev;;
-			6) showwhiteclass;;
-			7) deldev;;
-			8) delclass;;
-			9) openhost;;
+			2) delhost;;
+	                3) addnew;;
+	                4) addnewip;;
+			5) addnewclass;;
+			6) showwhitedev;;
+			7) showwhiteclass;;
+			8) deldev;;
+			9) delclass;;
+			10) trigger_def;;
+			11) report;;
 	                Exit) echo "Bye"; break;;
 	        esac
 	
