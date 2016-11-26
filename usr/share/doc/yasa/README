@@ -1,0 +1,4 @@
+### Install new version
+1- Copy new version of yasa folder to server
+2- In usr/share/lib/ run install script to copy all new version of file to system
+

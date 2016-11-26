@@ -80,7 +80,7 @@ group_main() {
 			2) group_del;;
 			3) group_addhost;;
 			4) group_showmemebter;;
-			5) group_add
+			5) group_add;;
 	                Exit) break;;
 	        esac
 	
@@ -923,7 +923,7 @@ else
 	        --menu "You can use the UP/DOWN arrow keys, the first \
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 22 65 12 \
+	        Choose the TASK" 23 65 13 \
 		1 "Add new host" \
 		2 "Delete hosts" \
 	        3 "Add new device based on last ten entry" \
