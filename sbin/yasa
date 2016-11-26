@@ -26,6 +26,80 @@ CLIENTHOME='/etc/yasa/puppet/files/hosts'
 #
 # This script need use global variable structure
 
+group_addrule() {
+	echo "N"
+}
+
+group_add() {
+	echo "N"
+}
+
+group_del() {
+	echo "N"
+}
+
+group_exist() {
+	echo "N"
+}
+
+group_adddelhost() {
+	echo "N"
+}
+
+group_showrule() {
+	echo "N"
+}
+
+group_showmember() {
+	echo "N"
+}
+
+group_main() {
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Group Management Menu" \
+	        --title "[ R E P O R T - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 14 55 6 \
+		1 "Add new group" \
+		2 "Delete a group" \
+		3 "Add/Remove host to/from group" \
+		4 "Show member of group" \
+		5 "Add device/class to group" \
+	        Exit "Retrun to main menu" 2>"${MAININPUT}"
+	
+	        menuitem=$(<"${MAININPUT}")
+	
+	
+	        # make decsion
+	        case $menuitem in
+			1) group_add;;
+			2) group_del;;
+			3) group_addhost;;
+			4) group_showmemebter;;
+			5) group_add
+	                Exit) break;;
+	        esac
+	
+	done
+
+}
+
+report_log() {
+	echo "N"
+}
+
+report_peruser() {
+	echo "N"
+}
+
+report_indays() {
+	echo "N"
+}
+
 rule_exist() {
 	local hostid="$1"
         local vendorid="$2"
@@ -104,8 +178,8 @@ addnew() {
 	local currenttime
 
 	# temperorly file 
-	local INPUT1=$(mktemp usb.XXXXXXXX)
-	local INPUT2=$(mktemp usb.XXXXXXXX)
+	local INPUT1=$(mktemp /tmp/usb.XXXXXXXX)
+	local INPUT2=$(mktemp /tmp/usb.XXXXXXXX)
 	
 	# menu output
 	local OUTPUT=$(mktemp /tmp/output.XXXXXXX)
@@ -201,8 +275,8 @@ addnewip() {
 	local currenttime
 
 	# temperorly file 
-	local INPUT1=$(mktemp usb.XXXXXXXX)
-	local INPUT2=$(mktemp usb.XXXXXXXX)
+	local INPUT1=$(mktemp /tmp/usb.XXXXXXXX)
+	local INPUT2=$(mktemp /tmp/usb.XXXXXXXX)
 	
 	# menu output
 	local OUTPUT=$(mktemp /tmp/output.XXXXXXX)
@@ -345,6 +419,7 @@ addnewclass() {
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
 	
+	[ "$develop" != 1 ] &&  puppet kick ${newwhite[1]#*:}
 
 	return 0
 }
@@ -732,7 +807,7 @@ report_deactive() {
 
 }
 
-report() {
+report_main() {
 	while true
 	do
 	        ### display main menu ###
@@ -848,7 +923,7 @@ else
 	        --menu "You can use the UP/DOWN arrow keys, the first \
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 21 65 12 \
+	        Choose the TASK" 22 65 12 \
 		1 "Add new host" \
 		2 "Delete hosts" \
 	        3 "Add new device based on last ten entry" \
@@ -860,6 +935,7 @@ else
 		9 "Delete class from white list" \
 		10 "Trigger state (allow all/deny all)" \
 		11 "Report" \
+		12 "Groups management" \
 	        Exit "Exit and Logout" 2>"${MAININPUT}"
 	
 	        menuitem=$(<"${MAININPUT}")
@@ -877,7 +953,8 @@ else
 			8) deldev;;
 			9) delclass;;
 			10) trigger_def;;
-			11) report;;
+			11) report_main;;
+			12) grpups_main;;
 	                Exit) echo "Bye"; break;;
 	        esac
 	
