@@ -901,13 +901,34 @@ yasaauth() {
 	return 0
 }
 
-# non interactive mod
-if [ "$1" = "cron" ]
+client_mgmt_menu() {
+
+}
+
+group_mgmt_mene() {
+
+}
+
+report_menu() {
+
+}
+
+install_men() {
+
+}
+
+# Non-interactive mod
+if [ ! -z "$1" ]
 then
-	yasacron
-elif [ "$1" = "auth" ]
-then
-	yasaauth $2 $3
+	if [ "$1" = "cron" ]
+	then
+		yasacron
+	elif [ "$1" = "auth" ]
+	then
+		yasaauth $2 $3
+	fi
+
+# Interactive mod
 else
 	# Menu input
 	MAININPUT=$(mktemp /tmp/usb.XXXXXXXX)
@@ -940,23 +961,31 @@ else
 	
 	        menuitem=$(<"${MAININPUT}")
 	
-	
 	        # make decsion
 	        case $menuitem in
-			1) addnewhost;;
-			2) delhost;;
-	                3) addnew;;
-	                4) addnewip;;
-			5) addnewclass;;
-			6) showwhitedev;;
-			7) showwhiteclass;;
-			8) deldev;;
-			9) delclass;;
-			10) trigger_def;;
-			11) report_main;;
-			12) grpups_main;;
+			1) client_mgmt_menu;;
+			2) group_mgmt_menue;;
+	                3) report_menu;;
+	                4) install_menu;;
 	                Exit) echo "Bye"; break;;
 	        esac
+	
+	        # make decsion
+#	        case $menuitem in
+#			1) addnewhost;;
+#			2) delhost;;
+#	                3) addnew;;
+#	                4) addnewip;;
+#			5) addnewclass;;
+#			6) showwhitedev;;
+#			7) showwhiteclass;;
+#			8) deldev;;
+#			9) delclass;;
+#			10) trigger_def;;
+#			11) report_main;;
+#			12) grpups_main;;
+#	                Exit) echo "Bye"; break;;
+#	        esac
 	
 	done
 fi
