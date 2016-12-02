@@ -54,40 +54,6 @@ group_showmember() {
 	echo "N"
 }
 
-group_main() {
-	while true
-	do
-	        ### display main menu ###
-	        /usr/bin/dialog --clear --backtitle "Yasa Group Management Menu" \
-	        --title "[ R E P O R T - M E N U ]" \
-	        --menu "You can use the UP/DOWN arrow keys, the first \
-	        letter of the choice as a hot key, or the \
-	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 14 55 6 \
-		1 "Add new group" \
-		2 "Delete a group" \
-		3 "Add/Remove host to/from group" \
-		4 "Show member of group" \
-		5 "Add device/class to group" \
-	        Exit "Retrun to main menu" 2>"${MAININPUT}"
-	
-	        menuitem=$(<"${MAININPUT}")
-	
-	
-	        # make decsion
-	        case $menuitem in
-			1) group_add;;
-			2) group_del;;
-			3) group_addhost;;
-			4) group_showmemebter;;
-			5) group_add;;
-	                Exit) break;;
-	        esac
-	
-	done
-
-}
-
 report_log() {
 	echo "N"
 }
@@ -489,6 +455,7 @@ deldev() {
 	# define array
 	local ar=()
 
+	set -x
 	dialog --title "Choose host" --menu "Choose a host to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
 
 	# save menu output
@@ -550,7 +517,7 @@ deldev() {
 			else
 				echo $line >> $OUTPUT
 			fi
-		done < $host_dir/temp/$WDEVICE
+		done < $CLIENTHOME/$hostid/temp/$WDEVICE
 	
 	 	cp $OUTPUT $CLIENTHOME/$hostid/temp/$WDEVICE	
 		dialog --msgbox "Device deleted from whitelist" 5 35
@@ -561,6 +528,7 @@ deldev() {
 		# run puppet kick
 		[ "$develop" != 1 ] && puppet kick $hostid
 	fi
+	set +x
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
@@ -902,19 +870,199 @@ yasaauth() {
 }
 
 client_mgmt_menu() {
+	# Menu input
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXXX)
+	
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+	
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Client Management Menu" \
+	        --title "[ C L I E N T - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 20 65 13 \
+		1 "Add new host" \
+		2 "Delete hosts" \
+	        3 "Add new device based on last ten entry" \
+	        4 "Add new device based on client IP address" \
+		5 "Add new class to white list" \
+		6 "Show device white list" \
+		7 "Show class white list" \
+		8 "Delete device from white list" \
+		9 "Delete class from white list" \
+		10 "Trigger state (allow all/deny all)" \
+	        Exit "Return to Main Menu" 2>"${OUTPUT}"
+	
+	        local menuitem=$(<"${OUTPUT}")
 
+		# if user enter cancel
+		if [ -z "$menuitem" ]
+		then
+		        # remove temp file
+		        [ -f "$OUTPUT" ] && rm $OUTPUT
+
+			return 0
+		fi
+
+	        # make decsion
+	        case $menuitem in
+			1) addnewhost;;
+			2) delhost;;
+	                3) addnew;;
+	                4) addnewip;;
+			5) addnewclass;;
+			6) showwhitedev;;
+			7) showwhiteclass;;
+			8) deldev;;
+			9) delclass;;
+			10) trigger_def;;
+	                Exit) echo "Bye"; break;;
+	        esac
+	
+
+	done	
+	return 0
 }
 
 group_mgmt_mene() {
+	# Menu input
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXXX)
+	
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
 
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Group Management Menu" \
+	        --title "[ GROUP - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 14 55 6 \
+		1 "Add new group" \
+		2 "Delete a group" \
+		3 "Add/Remove host to/from group" \
+		4 "Show member of group" \
+		5 "Add device/class to group" \
+	        Exit "Return to Main Menu" 2>"${OUTPUT}"
+	
+	        local menuitem=$(<"${OUTPUT}")
+
+		# if user enter cancel
+		if [ -z "$menuitem" ]
+		then
+		        # remove temp file
+		        [ -f "$OUTPUT" ] && rm $OUTPUT
+
+			return 0
+		fi
+	
+	        # make decsion
+	        case $menuitem in
+			1) group_add;;
+			2) group_del;;
+			3) group_addhost;;
+			4) group_showmemebter;;
+			5) group_add;;
+	                Exit) break;;
+	        esac
+	
+
+	done	
+	return 0
 }
 
 report_menu() {
+	# Menu input
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXXX)
+	
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
 
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Report Menu" \
+	        --title "[ R E P O R T - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 12 55 6 \
+		1 "Show active client" \
+		2 "Show deactive client" \
+	        Exit "Return to Main Menu" 2>"${OUTPUT}"
+	
+	        local menuitem=$(<"${OUTPUT}")
+
+		# if user enter cancel
+		if [ -z "$menuitem" ]
+		then
+		        # remove temp file
+		        [ -f "$OUTPUT" ] && rm $OUTPUT
+
+			return 0
+		fi
+	
+	        # make decsion
+	        case $menuitem in
+			1) report_active;;
+			2) report_deactive;;
+	                Exit) break;;
+	        esac
+	
+
+	done	
+	return 0
 }
 
-install_men() {
+install_menu() {
+	# Menu input
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXXX)
+	
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
 
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Install Menu" \
+	        --title "[ I N S T A L L - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 12 55 6 \
+		1 "Intall new client" \
+		2 "Prepare server installation" \
+	        Exit "Return to Main Menu" 2>"${OUTPUT}"
+	
+	        local menuitem=$(<"${OUTPUT}")
+
+		# if user enter cancel
+		if [ -z "$menuitem" ]
+		then
+		        # remove temp file
+		        [ -f "$OUTPUT" ] && rm $OUTPUT
+
+			return 0
+		fi
+	
+	        # make decsion
+	        case $menuitem in
+			1) report_active;;
+			2) report_deactive;;
+	                Exit) break;;
+	        esac
+	
+
+	done	
+	return 0
+
+	echo "N"
 }
 
 # Non-interactive mod
@@ -943,24 +1091,25 @@ else
 	        --title "[ M A I N - M E N U ]" \
 	        --menu "You can use the UP/DOWN arrow keys, the first \
 	        letter of the choice as a hot key, or the \
-	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 23 65 13 \
-		1 "Add new host" \
-		2 "Delete hosts" \
-	        3 "Add new device based on last ten entry" \
-	        4 "Add new device based on client IP address" \
-		5 "Add new class to white list" \
-		6 "Show device white list" \
-		7 "Show class white list" \
-		8 "Delete device from white list" \
-		9 "Delete class from white list" \
-		10 "Trigger state (allow all/deny all)" \
-		11 "Report" \
-		12 "Groups management" \
+	        number keys 1-4 to choose an option.\
+	        Choose the TASK" 15 65 5 \
+		1 "Client Management" \
+		2 "Group Management" \
+	        3 "Reports" \
+	        4 "Installation Client and Server" \
 	        Exit "Exit and Logout" 2>"${MAININPUT}"
 	
 	        menuitem=$(<"${MAININPUT}")
 	
+		if [ -z "$menuitem" ]
+		then
+		        # remove temp file
+		        [ -f "$MAININPUT" ] && rm $MAININPUT
+
+			exit 0
+		fi
+
+
 	        # make decsion
 	        case $menuitem in
 			1) client_mgmt_menu;;
@@ -969,24 +1118,6 @@ else
 	                4) install_menu;;
 	                Exit) echo "Bye"; break;;
 	        esac
-	
-	        # make decsion
-#	        case $menuitem in
-#			1) addnewhost;;
-#			2) delhost;;
-#	                3) addnew;;
-#	                4) addnewip;;
-#			5) addnewclass;;
-#			6) showwhitedev;;
-#			7) showwhiteclass;;
-#			8) deldev;;
-#			9) delclass;;
-#			10) trigger_def;;
-#			11) report_main;;
-#			12) grpups_main;;
-#	                Exit) echo "Bye"; break;;
-#	        esac
-	
 	done
 fi
 	
