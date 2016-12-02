@@ -197,7 +197,7 @@ addnew() {
 	# input box for enter validation time in houre
 	while true
 	do
-		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 2> $OUTPUT
+		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $OUTPUT
 		validtime=$(<$OUTPUT)
 		if [ -z "$validtime" ] || [ "$validtime" = "0" ]
 		then
@@ -455,7 +455,6 @@ deldev() {
 	# define array
 	local ar=()
 
-	set -x
 	dialog --title "Choose host" --menu "Choose a host to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
 
 	# save menu output
@@ -528,7 +527,6 @@ deldev() {
 		# run puppet kick
 		[ "$develop" != 1 ] && puppet kick $hostid
 	fi
-	set +x
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
