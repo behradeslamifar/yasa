@@ -2,7 +2,7 @@
 
 [ ! -d DEBIAN ] && echo "Please cd in yasa new version and then run install script again" && exit 1
 
-/bin/cp sbin/yasa /sbin/yasa
-/bin/cp -r usr/lib/yasa /usr/lib/
-/bin/cp -r usr/share/doc/yasa /usr/share/doc/
-/bin/cp -r etc/yasa/skell /etc/yasa/
+/bin/cp -a sbin/yasa /sbin/yasa
+/bin/cp -ar usr/lib/yasa /usr/lib/
+/bin/cp -ar usr/share/doc/yasa /usr/share/doc/
+/bin/cp -ar etc/yasa/skell /etc/yasa/

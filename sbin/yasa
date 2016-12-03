@@ -165,11 +165,15 @@ addnew() {
 	dialog  --title "10 Latest Devices" --menu "Your choozen device will be add to whitelist" 0 80 5 "${ar[@]}" 2> $OUTPUT
 
 	NUM=$(<$OUTPUT)
+
+	# if user chose cancel
 	if [ "$NUM" = "" ]
 	then 
+		# remove temp files
 		[ -f "$INPUT1" ] && rm $INPUT1
 		[ -f "$INPUT2" ] && rm $INPUT2
 		[ -f "$OUTPUT" ] && rm $OUTPUT
+
 		return 1
 	fi
 	newwhite=($(sed -n "$NUM p" $INPUT1))
@@ -191,14 +195,38 @@ addnew() {
 		return 1
 	fi
 	# input comment
-	dialog --inputbox "Write comment for this device" 8 80 2> $OUTPUT
+	dialog --inputbox "Write comment for this device" 8 80 "no comment" 2> $OUTPUT
 	local comment=$(<$OUTPUT)
+
+	# if user chose cancel
+	if [ -z "$comment" ]
+	then
+		# remove temp file if exist
+		[ -f "$INPUT1" ] && rm $INPUT1
+		[ -f "$INPUT2" ] && rm $INPUT2
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+
+		return 0
+	fi
 
 	# input box for enter validation time in houre
 	while true
 	do
 		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $OUTPUT
 		validtime=$(<$OUTPUT)
+
+		# if user chose cancel
+		if [ -z "$validtime" ]
+		then
+			# remove temp file if exist
+			[ -f "$INPUT1" ] && rm $INPUT1
+			[ -f "$INPUT2" ] && rm $INPUT2
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+			return 0
+		fi
+
+
 		if [ -z "$validtime" ] || [ "$validtime" = "0" ]
 		then
 			validtime=0
@@ -216,15 +244,6 @@ addnew() {
 		
 	write_rule "$CLIENTHOME/${newwhite[1]#*:}"
 	dialog --msgbox "Device added successfully" 5 30
-
-#	{ tail /var/log/usblock.log | while read usbtime usbhost usbip usbvid usbpid usbserial
-#	do
-#		echo "$usbtime"
-#		echo "$usbhost $usbip"
-#		echo "$usbvid $usbpid $usbserial"
-#		read -u 3 -n 1 -p "Do you want add this device to whitelist (N/y): " ADDUSB
-#	done
-#	} 3<&0
 
 	# remove temp file if exist
 	[ -f "$INPUT1" ] && rm $INPUT1
@@ -255,43 +274,94 @@ addnewip() {
 	trap "rm $INPUT1 $INPUT2 $OUTPUT; exit" SIGHUP SIGINT SIGTERM
 	
 	# search based on ip address
-	dialog --inputbox "Write comment for this device" 8 80 2> $OUTPUT
+	dialog --inputbox "Please enter ip address or hostname for search in log file" 8 80 2> $OUTPUT
 
 	# save input variable
-	ipadd=$($OUTPUT)
+	ipadd=$(<$OUTPUT)
+
+	# if user cancel the dialog
+	if [ -z "$ipadd" ]
+	then
+		[ -f "$INPUT1" ] && rm $INPUT1
+		[ -f "$INPUT2" ] && rm $INPUT2
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+		return 0
+	fi
 
 	cat /var/log/usblock.log | grep "$ipadd" | tail | tac | cat -n | expand  | tr -s ' ' | sed 's/ //' >$INPUT2
 	cat "$INPUT2" | cut -f 1,3,5,6,7,8 -d " " > "$INPUT1"
 	while read n s ; do
 	    ar+=($n "$s")
 	done < $INPUT1
-	dialog  --title "10 Latest Devices" --menu "Your choozen device will be add to whitelist" 0 80 5 "${ar[@]}" 2> $OUTPUT
+	dialog  --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 5 "${ar[@]}" 2> $OUTPUT
 
 	NUM=$(<$OUTPUT)
+	
+	# if user chose cancel
 	if [ "$NUM" = "" ]
 	then 
-		return 1
+		# remove temp files
 		[ -f "$INPUT1" ] && rm $INPUT1
 		[ -f "$INPUT2" ] && rm $INPUT2
 		[ -f "$OUTPUT" ] && rm $OUTPUT
+
+		return 0
 	fi
+
+	# pick log line
 	newwhite=($(sed -n "$NUM p" $INPUT1))
+
+	# check if host exist
+	if [ -z "$(ls $CLIENTHOME | grep "^${newwhite[1]#*:}$")" ]
+        then
+                dialog --msgbox "This host is not exists.\nPlease add it in Add new host menu" 6 40
+		
+		# remove temp files
+		[ -f "$INPUT1" ] && rm $INPUT1
+		[ -f "$INPUT2" ] && rm $INPUT2
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+
+		return 0
+	fi
 
 	# check if device added befor
 	rule_exist ${newwhite[1]#*:} ${newwhite[3]#*:} ${newwhite[4]#*:} ${newwhite[5]#*:} && dialog --msgbox "Device already exist in whitelist" 5 38 && return 1
 
 	# input comment
-	dialog --inputbox "Write comment for this device" 8 80 2> $OUTPUT
+	dialog --inputbox "Write comment for this device" 8 80 "no comment" 2> $OUTPUT
 	local comment=$(<$OUTPUT)
+
+	# if user chose cancel
+	if [ -z "$comment"  ]
+	then 
+		# remove temp files
+		[ -f "$INPUT1" ] && rm $INPUT1
+		[ -f "$INPUT2" ] && rm $INPUT2
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+
+		return 0
+	fi
 
 	# input box for enter validation time in houre
 	while true
 	do
-		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 2> $OUTPUT
+		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $OUTPUT
 		validtime=$(<$OUTPUT)
-		if [ -z "$validtime" ] || [ "$validtime" = "0" ]
+
+		# if user chose cancel
+		if [ -z "$validtime"  ]
+		then 
+			# remove temp files
+			[ -f "$INPUT1" ] && rm $INPUT1
+			[ -f "$INPUT2" ] && rm $INPUT2
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+			return 0
+		fi
+
+		if [ "$validtime" = "0" ]
 		then
-			validtime=0
 			break
 		elif [ ! -z "$(echo $validtime | grep '^[1-9][0-9]*$')" ]
 		then
@@ -408,7 +478,7 @@ showwhitedev() {
 	local hostid=$(<$OUTPUT)
 	
 	# change unix time to normal time
-	sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $CLIENTHOME/$hostid/temp/$WDEVICE > $OUTPUT
+	sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $CLIENTHOME/$hostid/temp/$WDEVICE | cat -s > $OUTPUT
 	dialog --textbox $OUTPUT 10 80
 
 	# remove temp file
@@ -518,7 +588,7 @@ deldev() {
 			fi
 		done < $CLIENTHOME/$hostid/temp/$WDEVICE
 	
-	 	cp $OUTPUT $CLIENTHOME/$hostid/temp/$WDEVICE	
+	 	cat -s $OUTPUT > $CLIENTHOME/$hostid/temp/$WDEVICE	
 		dialog --msgbox "Device deleted from whitelist" 5 35
 
 		# generate udev rule
@@ -595,6 +665,15 @@ addnewhost() {
 	dialog --inputbox "Enter new hostname FQDN (only use a-z and digits)" 10 60 2> $OUTPUT
 	hostid=$(<$OUTPUT)
 
+	# if user press cancel
+	if [ -z "$hostid" ]
+	then
+		# remove temp file
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		
+		return 0
+	fi
+
 	# validate hostname FQDN
 	if [ -z "$(echo "$hostid" | egrep "^(([a-zA-Z]{1})|([a-zA-Z]{1}[a-zA-Z]{1})|([a-zA-Z]{1}[0-9]{1})|([0-9]{1}[a-zA-Z]{1})|([a-zA-Z0-9][a-zA-Z0-9_-]{1,61}[a-zA-Z0-9]))\.([a-zA-Z]{2,6}|[a-zA-Z0-9-]{2,30}\.[a-zA-Z]{2,})$")" ] 
 	then
@@ -605,7 +684,7 @@ addnewhost() {
 		dialog --msgbox "This host is exists" 5 25
 	else
 		mkdir -p $CLIENTHOME/$hostid 
-		cp -r /etc/yasa/skell/* $CLIENTHOME/$hostid
+		cp -ar /etc/yasa/skell/* $CLIENTHOME/$hostid
 		write_rule $CLIENTHOME/$hostid
 		if [ -d "$CLIENTHOME/$hostid" -a -d "$CLIENTHOME/$hostid/temp" ]
 		then
@@ -615,6 +694,9 @@ addnewhost() {
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
+
+	# run puppet kick
+	[ "$develop" != 1 ] && puppet kick $hostid
 
 	return 0
 
@@ -634,6 +716,7 @@ delhost() {
 	# list all hosts
 	dialog --title "Choose host(s) to delete from Yasa" --checklist "Choose one/more/all host(s) to delete from Yasa" 11 60 10 all hosts off $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
 	
+	# if user press cancel
 	if [ -z "$(cat $OUTPUT)" ]
 	then 
 	        # remove temp file
@@ -773,31 +856,13 @@ report_deactive() {
 
 }
 
-report_main() {
-	while true
-	do
-	        ### display main menu ###
-	        /usr/bin/dialog --clear --backtitle "Yasa Report Menu" \
-	        --title "[ R E P O R T - M E N U ]" \
-	        --menu "You can use the UP/DOWN arrow keys, the first \
-	        letter of the choice as a hot key, or the \
-	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 12 55 6 \
-		1 "Show active client" \
-		2 "Show deactive client" \
-	        Exit "Retrun to main menu" 2>"${MAININPUT}"
-	
-	        menuitem=$(<"${MAININPUT}")
+install_client_wizard() {
+	# client connection information
+	local hostname
+	local username
+	local password
 	
 	
-	        # make decsion
-	        case $menuitem in
-			1) report_active;;
-			2) report_deactive;;
-	                Exit) break;;
-	        esac
-	
-	done
 
 }
 
@@ -906,7 +971,7 @@ client_mgmt_menu() {
 			return 0
 		fi
 
-	        # make decsion
+	        # make decision
 	        case $menuitem in
 			1) addnewhost;;
 			2) delhost;;
@@ -960,7 +1025,7 @@ group_mgmt_mene() {
 			return 0
 		fi
 	
-	        # make decsion
+	        # make decision
 	        case $menuitem in
 			1) group_add;;
 			2) group_del;;
@@ -1006,7 +1071,7 @@ report_menu() {
 			return 0
 		fi
 	
-	        # make decsion
+	        # make decision
 	        case $menuitem in
 			1) report_active;;
 			2) report_deactive;;
@@ -1034,7 +1099,7 @@ install_menu() {
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
 	        Choose the TASK" 12 55 6 \
-		1 "Intall new client" \
+		1 "Intall new client wizard" \
 		2 "Prepare server installation" \
 	        Exit "Return to Main Menu" 2>"${OUTPUT}"
 	
@@ -1049,9 +1114,9 @@ install_menu() {
 			return 0
 		fi
 	
-	        # make decsion
+	        # make decision
 	        case $menuitem in
-			1) report_active;;
+			1) install_client_wizard;;
 			2) report_deactive;;
 	                Exit) break;;
 	        esac
@@ -1108,7 +1173,7 @@ else
 		fi
 
 
-	        # make decsion
+	        # make decision
 	        case $menuitem in
 			1) client_mgmt_menu;;
 			2) group_mgmt_menue;;
