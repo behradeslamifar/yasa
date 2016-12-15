@@ -1,7 +1,13 @@
 #!/bin/bash
 
 # development state
-develop=1
+develop=0
+
+# Home
+YASAHOME='/etc/yasa'
+
+# Group Home
+GRPHOME='/etc/yasa/group'
 
 # default file
 TEMPHOME='/etc/yasa/skell'
@@ -27,11 +33,53 @@ CLIENTHOME='/etc/yasa/puppet/files/hosts'
 # This script need use global variable structure
 
 group_addrule() {
-	echo "N"
+echo "N"	
 }
 
 group_add() {
-	echo "N"
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+	# hostname variable
+	local hostid
+	
+	while true
+	do
+		dialog --inputbox "Enter name of new group\nName must be 3 character at least\nOnly use Lowercase Alphabet and Digits" 10 50 2> $OUTPUT
+		groupid=$(<$OUTPUT)
+	
+		# if user press cancel
+		if [ -z "$groupid" ]
+		then
+			# remove temp file
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+			
+			return 0
+		fi
+	
+		# validate hostname FQDN
+		if [ -z "$(echo "$groupid" | egrep "[a-z0-9]{3,}")" ] 
+		then
+			dialog --msgbox "Group name not accepted, please use valid format." 6 60
+		elif [ ! -z "$(ls $GRPHOME | grep "^${groupid}$")" ]
+	        then
+	                dialog --msgbox "This Group already exists.\nPlease choose another name." 6 40
+		else 
+			mkdir $GRPHOME/$groupid
+			cp -ar $TEMPHOME/skell/group/* $GRPHOME/$groupid
+	                dialog --msgbox "Group added successfully." 5 30
+		
+			# remove temp file
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+			
+			return 0
+	
+		fi
+	done
+
 }
 
 group_del() {
@@ -42,8 +90,46 @@ group_exist() {
 	echo "N"
 }
 
-group_adddelhost() {
-	echo "N"
+group_add_host() {
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+
+        # count number of host
+        local hostsum=$(ls $CLIENTHOME | wc -l)
+
+	# choose group to modify
+        dialog --title "Group List" --menu "Choose one group to modify" 10 60 $hostsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+
+	local groupid=$(<$OUTPUT)
+
+	# if user select cancel
+	if [ -z "$groupid" ]
+	then
+		# remove temp file
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+		return 0
+	fi
+
+	# choose hosts to add to group
+        dialog --title "Choose host(s)" --checklist "Choose one/more host(s) for add to group" 10 60 $hostsum $(for i in $(ls $CLIENTHOME/); do echo "$i ${i%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
+
+	if [ -z $(cat $OUTPUT) ]
+	then
+		# remove temp file
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+		return 0
+	fi
+
+	for i in $(<$OUTPUT)	
+	do
+		echo N	
+	done
 }
 
 group_showrule() {
@@ -289,7 +375,7 @@ addnewip() {
 		return 0
 	fi
 
-	cat /var/log/usblock.log | grep "$ipadd" | tail | tac | cat -n | expand  | tr -s ' ' | sed 's/ //' >$INPUT2
+	cat /var/log/usblock.log | grep -i "$ipadd" | tail | tac | cat -n | expand  | tr -s ' ' | sed 's/ //' >$INPUT2
 	cat "$INPUT2" | cut -f 1,3,5,6,7,8 -d " " > "$INPUT1"
 	while read n s ; do
 	    ar+=($n "$s")
@@ -421,6 +507,15 @@ addnewclass() {
 	FEh "Application Specific" \
 	FFh "Vendor Specific" 2> $OUTPUT
 	
+	# if user press cancel
+	if [ -z $(<$OUTPUT) ]
+	then
+		# remove temp file
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+		return 0
+	fi	
+	
 	# save menu output
 	local class=$(cat $OUTPUT | tr -d 'h')
 
@@ -432,6 +527,15 @@ addnewclass() {
 	
 		dialog --title "Choose host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts off $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
 	
+		# if user press cancel
+		if [ -z $(<$OUTPUT) ]
+		then
+			# remove temp file
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+			
+			return 0
+		fi
+
 		for i in $(<$OUTPUT)	
 		do
 			if [ "$i" == "all" ]
@@ -472,14 +576,26 @@ showwhitedev() {
 	local hostsum=$(ls $CLIENTHOME | wc -l)
 	((hostsum++))
 
-	dialog --title "Choose host(s)" --menu "Choose one/more/all host(s) to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
-
-	# save menu output
-	local hostid=$(<$OUTPUT)
+	while true
+	do
+		dialog --title "Choose host(s)" --menu "Choose one/more/all host(s) to show whitelist\nPress cancel to return Client Management menu" 13 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
 	
-	# change unix time to normal time
-	sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $CLIENTHOME/$hostid/temp/$WDEVICE | cat -s > $OUTPUT
-	dialog --textbox $OUTPUT 10 80
+		# save menu output
+		local hostid=$(<$OUTPUT)
+		
+		# if user press cancel
+		if [ -z "$hostid" ]
+		then
+			# remove temp file
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+			return 0
+		fi
+	
+		# change unix time to normal time
+		sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $CLIENTHOME/$hostid/temp/$WDEVICE | cat -s > $OUTPUT
+		dialog --textbox $OUTPUT 10 80
+	done
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
@@ -498,12 +614,49 @@ showwhiteclass() {
 	local hostsum=$(ls $CLIENTHOME | wc -l)
 	((hostsum++))
 
-	dialog --title "Choose host(s)" --menu "Choose one/more/all host(s) to show whitelist" 10 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+	while true
+	do
+		dialog --title "Choose host(s)" --menu "Choose one/more/all host(s) to show whitelist\nPress cancel to return Client Management menu" 13 60 $hostsum $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+	
+		# save menu output
+		local hostid=$(<$OUTPUT)
+	
+		# if user press cancel
+		if [ -z "$hostid" ]
+		then
+			# remove temp file
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+			return 0
+		fi
 
-	# save menu output
-	local hostid=$(<$OUTPUT)
-
-	dialog --textbox $CLIENTHOME/$hostid/temp/$WCLASS 10 80
+		# Convert to human readable text
+		sed -e 's/00/00h Use class information in the Interface Descriptors/' \
+		        -e 's/00/00h Use class information in the Interface Descriptors/' \
+		        -e 's/01/01h Audio/' \
+		        -e 's/02/02h Communications and CDC Control/' \
+		        -e 's/03/03h HID (Human Interface Device)/' \
+		        -e 's/05/05h Physical/' \
+		        -e 's/06/06h Image/' \
+		        -e 's/07/07h Printer/' \
+		        -e 's/08/08h Mass Storage/' \
+		        -e 's/09/09h Hub/' \
+		        -e 's/0A/0Ah CDC-Data/' \
+		        -e 's/0B/0Bh Smart Card/' \
+		        -e 's/0D/0Dh Content Security/' \
+		        -e 's/0E/0Eh Video/' \
+		        -e 's/0F/0Fh Personal Healthcare/' \
+		        -e 's/10/10h Audio\/Video Devices/' \
+		        -e 's/11/11h Billboard Device Class/' \
+		        -e 's/12/12h USB Type-C Bridge Class/' \
+		        -e 's/DC/DCh Diagnostic Device/' \
+		        -e 's/E0/E0h Wireless Controller/' \
+		        -e 's/EF/EFh Miscellaneous/' \
+		        -e 's/FF/FEh Application Specific/' \
+		        -e 's/FF/FFh Vendor Specific/'  $CLIENTHOME/$hostid/temp/$WCLASS > $OUTPUT
+	
+		dialog --textbox $OUTPUT 10 80
+	done
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
@@ -684,7 +837,7 @@ addnewhost() {
 		dialog --msgbox "This host is exists" 5 25
 	else
 		mkdir -p $CLIENTHOME/$hostid 
-		cp -ar /etc/yasa/skell/* $CLIENTHOME/$hostid
+		cp -ar /etc/yasa/skell/{etc,temp} $CLIENTHOME/$hostid
 		write_rule $CLIENTHOME/$hostid
 		if [ -d "$CLIENTHOME/$hostid" -a -d "$CLIENTHOME/$hostid/temp" ]
 		then
@@ -787,7 +940,14 @@ trigger_def() {
         # save menu output
         local hostid=$(<$OUTPUT)
 
-	if [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "0" ]
+	if [ -z "$hostid" ]
+	then
+		# user press cancel
+		# remove temp file
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+
+		return 0
+	elif [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "0" ]
 	then
 		sed -i 's/devpath 0/devpath 1/' $CLIENTHOME/$hostid/temp/90-footer
 		echo "1" > $CLIENTHOME/$hostid/temp/$WDEF
@@ -991,7 +1151,7 @@ client_mgmt_menu() {
 	return 0
 }
 
-group_mgmt_mene() {
+group_mgmt_menu() {
 	# Menu input
 	local OUTPUT=$(mktemp /tmp/usb.XXXXXXXX)
 	
@@ -1006,7 +1166,7 @@ group_mgmt_mene() {
 	        --menu "You can use the UP/DOWN arrow keys, the first \
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 14 55 6 \
+	        Choose the TASK" 16 55 6 \
 		1 "Add new group" \
 		2 "Delete a group" \
 		3 "Add/Remove host to/from group" \
@@ -1029,7 +1189,7 @@ group_mgmt_mene() {
 	        case $menuitem in
 			1) group_add;;
 			2) group_del;;
-			3) group_addhost;;
+			3) group_add_host;;
 			4) group_showmemebter;;
 			5) group_add;;
 	                Exit) break;;
@@ -1056,8 +1216,8 @@ report_menu() {
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
 	        Choose the TASK" 12 55 6 \
-		1 "Show active client" \
-		2 "Show deactive client" \
+		1 "Show restricted client" \
+		2 "Show full access client" \
 	        Exit "Return to Main Menu" 2>"${OUTPUT}"
 	
 	        local menuitem=$(<"${OUTPUT}")
@@ -1176,7 +1336,7 @@ else
 	        # make decision
 	        case $menuitem in
 			1) client_mgmt_menu;;
-			2) group_mgmt_menue;;
+			2) group_mgmt_menu;;
 	                3) report_menu;;
 	                4) install_menu;;
 	                Exit) echo "Bye"; break;;
