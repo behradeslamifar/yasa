@@ -118,6 +118,7 @@ group_add_host() {
 	# choose hosts to add to group
         dialog --title "Choose host(s)" --checklist "Choose one/more host(s) for add to group" 10 60 $hostsum $(for i in $(ls $CLIENTHOME/); do echo "$i ${i%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
 
+	# if user press cancel
 	if [ -z $(cat $OUTPUT) ]
 	then
 		# remove temp file
@@ -252,7 +253,7 @@ addnew() {
 
 	NUM=$(<$OUTPUT)
 
-	# if user chose cancel
+	# if user choose cancel
 	if [ "$NUM" = "" ]
 	then 
 		# remove temp files
@@ -284,7 +285,7 @@ addnew() {
 	dialog --inputbox "Write comment for this device" 8 80 "no comment" 2> $OUTPUT
 	local comment=$(<$OUTPUT)
 
-	# if user chose cancel
+	# if user choose cancel
 	if [ -z "$comment" ]
 	then
 		# remove temp file if exist
@@ -301,7 +302,7 @@ addnew() {
 		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $OUTPUT
 		validtime=$(<$OUTPUT)
 
-		# if user chose cancel
+		# if user choose cancel
 		if [ -z "$validtime" ]
 		then
 			# remove temp file if exist
@@ -384,7 +385,7 @@ addnewip() {
 
 	NUM=$(<$OUTPUT)
 	
-	# if user chose cancel
+	# if user choose cancel
 	if [ "$NUM" = "" ]
 	then 
 		# remove temp files
@@ -418,7 +419,7 @@ addnewip() {
 	dialog --inputbox "Write comment for this device" 8 80 "no comment" 2> $OUTPUT
 	local comment=$(<$OUTPUT)
 
-	# if user chose cancel
+	# if user choose cancel
 	if [ -z "$comment"  ]
 	then 
 		# remove temp files
@@ -435,7 +436,7 @@ addnewip() {
 		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $OUTPUT
 		validtime=$(<$OUTPUT)
 
-		# if user chose cancel
+		# if user choose cancel
 		if [ -z "$validtime"  ]
 		then 
 			# remove temp files
@@ -776,9 +777,28 @@ delclass() {
 	# save menu output
 	local hostid=$(<$OUTPUT)
 
+        # if user choose cancel
+        if [ -z "$hostid" ]
+        then
+                # remove temp file
+                [ -f "$OUTPUT" ] && rm $OUTPUT
+
+                return 0
+        fi
+
 	dialog --title "Choose host(s)" --menu "Choose a class for delete from whitelist" 10 60 5 $(cat -n $CLIENTHOME/$hostid/temp/$WCLASS) 2> $OUTPUT
 
 	local linenumber=$(<$OUTPUT)
+
+	# if user choose cancel
+	if [ -z "$linenumber" ]
+	then
+	        # remove temp file
+	        [ -f "$OUTPUT" ] && rm $OUTPUT
+	
+		return 0
+	fi
+
 	local classnum=$(sed -n "$linenumber p" $CLIENTHOME/$hostid/temp/$WCLASS)
 	if [ "$classnum" == "09" ]
 	then
@@ -787,6 +807,12 @@ delclass() {
 		if [ "$response" == "0" ]
 		then
 			sed -i "$linenumber d" $CLIENTHOME/$hostid/temp/$WCLASS
+		else
+			# if select no
+			# remove temp file
+		        [ -f "$OUTPUT" ] && rm $OUTPUT
+
+			return 0
 		fi
 	else
 		sed -i "$linenumber d" $CLIENTHOME/$hostid/temp/$WCLASS
