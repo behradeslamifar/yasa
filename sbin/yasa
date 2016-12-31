@@ -27,13 +27,481 @@ WDEF='default'
 # $CLIENTHOME/$fqdn/
 CLIENTHOME='/etc/yasa/puppet/files/hosts'
 
+# udev config filename
+UDEVCONF="10-usblock.rules"
+
+# device log file
+DEVICELOG="/var/log/usblock.log"
+
 # require fuctions that help simple programing
 # host_exist
 #
 # This script need use global variable structure
 
-group_addrule() {
-echo "N"	
+group_modify_class() { 
+	# temp file for dialog output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+	# local variable
+	local groupid=$1
+	local classid
+
+	# choose between usb class
+        /usr/bin/dialog --backtitle "Usb lock main menu" \
+        --title "[ List of USB Class ]" \
+        --checklist "Choose a class to add to whitelist" 13 60 22 \
+	00h "Use class information in the Interface Descriptors" off \
+	01h "Audio" off \
+	02h "Communications and CDC Control" off \
+	03h "HID (Human Interface Device)" on \
+	05h "Physical" off \
+	06h "Image" off \
+	07h "Printer" off \
+	08h "Mass Storage" off \
+	09h "Hub" on \
+	0Ah "CDC-Data" off \
+	0Bh "Smart Card" off \
+	0Dh "Content Security" off \
+	0Eh "Video" off \
+	0Fh "Personal Healthcare" off \
+	10h "Audio/Video Devices" off \
+	11h "Billboard Device Class" off \
+	12h "USB Type-C Bridge Class" off \
+	DCh "Diagnostic Device" off \
+	E0h "Wireless Controller" off \
+	EFh "Miscellaneous" off \
+	FEh "Application Specific" off \
+	FFh "Vendor Specific" off 2> $OUTPUT
+	
+	# if user press cancel
+	if [ -z $(<$OUTPUT) ]
+	then
+		# remove temp file
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+		return 0
+	fi	
+	
+	# start with fresh class file
+	echo "" > $GRPHOME/$groupid/class.allow
+
+	for classid in $(<OUTPUT)
+	do
+		classid=$(echo $classid | tr -d 'h')
+		echo $classid >> $GRPHOME/$groupid/class.allow 	
+	done
+
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+
+	return 0
+
+}
+
+group_device_existence_check() {
+	local groupid="$1"
+        local vendorid="$2"
+        local productid="$3"
+        local serial="$4"
+
+	# return 1 if device not added 
+	[ -z $(grep ".*$vendorid.*$productid.*$serial.*" $CLIENTHOME/$hostid/temp/$WDEVICE | cut -f 1 -d " ") ] && return 1
+
+	# return 0 if device already exist 
+	return 0
+
+
+}
+
+group_modify_dev() {
+	# local variables
+	local validtime=0
+	local currenttime
+	local groupid=$1
+	local keyword
+	local response
+	local log_line_number
+
+	# define local array
+	local log_line_array=()
+	local log_line=()
+
+	# temperorly file 
+	local INPUT1=$(mktemp /tmp/usb.XXXXXXXX)
+	local INPUT2=$(mktemp /tmp/usb.XXXXXXXX)
+	
+	# menu output
+	local OUTPUT=$(mktemp /tmp/output.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $INPUT1 $INPUT2 $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+	
+	# search based on ip address
+	dialog --inputbox "Please search the keywork to find your device (ip|hostname|device)" 8 80 2> $OUTPUT
+
+	# save dialog state (find if user press cancel)
+	response=$?
+
+	# save input variable
+	keyword=$(<$OUTPUT)
+
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then
+		[ -f "$INPUT1" ] && rm $INPUT1
+		[ -f "$INPUT2" ] && rm $INPUT2
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+		return 0
+	fi
+
+	# normalize log file
+	cat $DEVICELOG | grep -i "$keyword" | tail | tac | cat -n | expand  | tr -s ' ' | sed 's/ //' >$INPUT2
+	cat "$INPUT2" | cut -f 1,3,5,6,7,8 -d " " > "$INPUT1"
+
+	while read n s ; do
+	    log_line_array+=($n "$s")
+	done < $INPUT1
+
+	dialog  --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 5 "${log_line_array[@]}" 2> $OUTPUT
+
+	# get reponse
+	response=$?
+
+	# get data stored in $OUTPUT
+	log_line_number=$(<$OUTPUT)
+	
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then 
+		# remove temp files
+		[ -f "$INPUT1" ] && rm $INPUT1
+		[ -f "$INPUT2" ] && rm $INPUT2
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+
+		return 0
+	fi
+
+	# pick log line
+	log_line=($(sed -n "$log_line_number p" $INPUT1))
+
+	# check if device added befor
+	group_device_existence_check ${log_line[1]#*:} ${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:} && dialog --msgbox "Device already exist in whitelist" 5 38 && return 1
+
+	# input comment
+	dialog --inputbox "Write comment for this device" 8 80 "no comment" 2> $OUTPUT
+	local comment=$(<$OUTPUT)
+
+	# get response
+	response=$?
+
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then 
+		# remove temp files
+		[ -f "$INPUT1" ] && rm $INPUT1
+		[ -f "$INPUT2" ] && rm $INPUT2
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+
+		return 0
+	fi
+
+	# input box for enter validation time in houre
+	while true
+	do
+		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $OUTPUT
+		validtime=$(<$OUTPUT)
+
+		# get response
+		response=$?
+
+		# if user cancel the dialog or press escape 
+		if [ "$response" == "1" -o "$response" == "255" ]
+		then 
+			# remove temp files
+			[ -f "$INPUT1" ] && rm $INPUT1
+			[ -f "$INPUT2" ] && rm $INPUT2
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+			return 0
+		fi
+
+		if [ "$validtime" = "0" ]
+		then
+			break
+		elif [ ! -z "$(echo $validtime | grep '^[1-9][0-9]*$')" ]
+		then
+			currenttime=$(date +"%s")
+			validtime=$(( $validtime * 60 * 60 + $currenttime ))
+			break
+		fi
+	done
+
+
+	# add new device to white list
+	echo -e "# comment $comment \n# ${newwhite[1]} ${newwhite[2] } \n${newwhite[3]#*:} ${newwhite[4]#*:} ${newwhite[5]#*:}\n" >> $CLIENTHOME/${newwhite[1]#*:}/temp/$WDEVICE
+		
+	write_rule "$CLIENTHOME/${newwhite[1]#*:}"
+
+	# remove temp file if exist
+	[ -f "$INPUT1" ] && rm $INPUT1
+	[ -f "$INPUT2" ] && rm $INPUT2
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+	
+	return 0
+}
+
+group_udev_gen() {
+ $groupid
+}
+
+
+group_modify_rule() {
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+
+        # count number of host
+        local groupsum=$(ls $GRPHOME | wc -l)
+
+	if [ -z "$1" ]
+	then
+		local interactive=1
+	else
+		local interactive=0
+		local groupid=$1
+	fi
+
+	while true
+	do
+	   if [ "$interactive" == "1" ]
+	   then
+		# choose group to modify
+		dialog --title "Group List" --menu "Choose one group to modify" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+	
+		local groupid=$(<$OUTPUT)
+	
+		# if user select cancel
+		if [ -z "$groupid" ]
+		then
+			# remove temp file
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+		
+			return 1
+	    	fi
+	   fi
+	   
+	   # modify class
+	   group_modify_class $groupid
+	   
+	   # modify device that allow in group
+	   group_modify_dev $groupid
+
+	   # create udev rule
+	   group_udev_gen $groupid
+
+	   # break while if noninteractive
+           if [ "$interactive" == "0" ]
+           then
+		break
+	   fi
+ 
+	done
+
+        # remove temp file
+        [ -f "$OUTPUT" ] && rm $OUTPUT
+
+        return 0
+
+}
+
+group_find_member() {
+	# define local variable
+	local groupid="$1"
+	local hostid="$2"
+
+	group_member=$(ls $CLIENTHOME/$hostid/temp/grp.* | grep "\<$groupid\>")
+	if [ ! -z "$group_member" ]
+	then 
+		echo "on"
+	else 
+		echo "off"
+	fi
+
+	return 0
+}
+
+host_write_rule() { 
+    # temperorly file 
+    TEMP=$(mktemp /tmp/usb.XXXXXXXX)
+    
+    # trap and delete temp file
+    trap "rm $TEMP; exit" SIGHUP SIGINT SIGTERM
+    
+    local hostid="$1"
+    local hostpath="$CLIENTHOME/$hostid"
+
+    if [ -e "$hostpath/temp/grp.*" ]
+    then
+	cp $GRPHOME/$groupid/10-usblock.rules $CLIENTHOME/$hostid/etc/
+    
+    else
+	echo "" > "$hostpath/temp/25-default-whitelist"
+	cat "$hostpath/temp/$WCLASS" | grep -v "^#\|^$" | while read line; do
+                echo "ATTR{bInterfaceClass}==\"$line\", ENV{valid}=\"2\""  >> "$hostpath/temp/25-default-whitelist"
+	done
+	
+	local ar=()
+
+	echo "" > "$hostpath/temp/20-whitelist"
+        cat "$hostpath/temp/$WDEVICE" | grep -v "^#\|^$" > $TEMP
+	
+	while read validtime vid pid serial 
+	do
+	        if [ -z "$serial" -a -z "$pid" ]
+		then
+	                echo "ATTR{idVendor}==\"$vid\", ENV{valid}=\"1\""  >> "$hostpath/temp/20-whitelist"
+	                echo "ATTRS{idVendor}==\"$vid\", ENV{valid}=\"2\""  >> "$hosttemath/20-whitelist"
+		elif [ -z "$serial" ]
+		then
+	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ENV{valid}=\"1\""  >> "$hostpath/temp/20-whitelist"
+	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ENV{valid}=\"2\""  >> "$hosttemath/20-whitelist"
+	        else
+	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ATTR{serial}==\"$serial\", ENV{valid}=\"1\"" >> "$hostpath/temp/20-whitelist"
+	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ATTRS{serial}==\"$serial\", ENV{valid}=\"2\"" >> "$hostpath/temp/20-whitelist"
+	        fi
+	done < $TEMP
+	
+	for I in $hostpath/temp/[0-9]*
+	do
+		if [ ! -z "$(echo $I | grep '10-header$')" ]
+		then
+			cat $I > "$hostpath/etc/10-usblock.rules"
+		else 
+			cat $I >> "$hostpath/etc/10-usblock.rules"
+		fi
+	done
+    fi
+
+	#remove temp file
+	[ -f "$TEMP" ] && rm $TEMP
+
+	return 0
+}
+
+host_deploy_config() { 
+	local hostid="$1"
+	local result
+
+	if [ "$develop" == "0" ] 
+	then
+		puppet kick $hostid
+		result=$?
+		
+		if [ "$result" != "0" ]
+		then
+			dialog --msgbox "$hostid deployment failed." 6 50		
+		fi
+	fi
+	
+}
+
+group_modify_member() {
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+	local oldmemberlist=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT $oldmemberlist; exit" SIGHUP SIGINT SIGTERM
+
+	# local variable
+	local groupid
+	local hostid
+	local groupsum
+	local hostsum
+
+	# if function had argument
+	if [ ! -z "$1"	]
+	then
+		groupid="$1"
+	else
+	        # count number of group
+	        groupsum=$(ls $GRPHOME | wc -l)
+	
+	        # choose group to modify
+	        dialog --title "Group List" --menu "Choose one group to add/remove member" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+	
+	        local groupid=$(<$OUTPUT)
+	
+	        # if user select cancel
+	        if [ -z "$groupid" ]
+	        then
+	                # remove temp file
+	                [ -f "$OUTPUT" ] && rm $OUTPUT
+		        [ -f "$oldmemberlist" ] && rm $oldmemberlist
+	
+	                return 1
+	        fi
+	fi
+
+	hostsum=$(ls $CLIENHOME | wc -l)
+
+        # choose hosts to add to group
+        dialog --title "Choose host(s)" --checklist "Choose one/more host(s) for add to group" 10 60 $hostsum $(for i in $(ls $CLIENTHOME/); do echo "$i ${i%%.*} $(group_find_member $groupid $i) " | tr -d "\n"; done) 2> $OUTPUT
+
+        # if user press cancel
+        if [ -z "$(cat $OUTPUT)" ]
+        then
+                # remove temp file
+                [ -f "$OUTPUT" ] && rm $OUTPUT
+        	[ -f "$oldmemberlist" ] && rm $oldmemberlist
+
+                return 1
+        fi
+
+	# remove all old member
+	find $CLIENTHOME -type f -name "grp.$groupid" -exec sh -c "echo -n '{} ' >> $oldmemberlist" \;
+
+	for hostid in $(<$OUTPUT)
+	do
+		rm $CLIENTHOME/$hostid/temp/grp.*
+		touch $CLIENTHOME/$hostid/temp/grp.$groupid
+
+		# remove from old list
+		sed -i "s_$CLIENTHOME/$hostid/temp/grp.$groupid__" $oldmemberlist
+
+		host_write_rule $hostid
+	done
+
+	for hostid in $(<$OUTPUT)
+	do
+		host_deploy_config $hostid
+	done
+
+	for I in $(<$oldmemberlist)
+	do
+		hostid=$(echo $i |  sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_")
+		host_write_rule $hostid
+	done
+
+	for I in $(<$oldmemberlist)
+	do
+		hostid=$(echo $i |  sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_")
+		host_deploy_config $hostid
+	done
+
+        # remove temp file
+        [ -f "$OUTPUT" ] && rm $OUTPUT
+        [ -f "$oldmemberlist" ] && rm $oldmemberlist
+
+        return 0
+		
 }
 
 group_add() {
@@ -57,7 +525,7 @@ group_add() {
 			# remove temp file
 			[ -f "$OUTPUT" ] && rm $OUTPUT
 			
-			return 0
+			return 1
 		fi
 	
 		# validate hostname FQDN
@@ -66,20 +534,28 @@ group_add() {
 			dialog --msgbox "Group name not accepted, please use valid format." 6 60
 		elif [ ! -z "$(ls $GRPHOME | grep "^${groupid}$")" ]
 	        then
-	                dialog --msgbox "This Group already exists.\nPlease choose another name." 6 40
+	                dialog --msgbox "This Group already exists.\nPlease choose another name or use\nmodify group menu for add member" 7 40
 		else 
 			mkdir $GRPHOME/$groupid
 			cp -ar $TEMPHOME/skell/group/* $GRPHOME/$groupid
 	                dialog --msgbox "Group added successfully." 5 30
 		
-			# remove temp file
-			[ -f "$OUTPUT" ] && rm $OUTPUT
-			
-			return 0
+			break
 	
 		fi
+		
 	done
 
+	# modify group
+	group_modify_rule $groupid
+
+	# modify member
+	group_modify_member $groupid
+
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+				
+	return 0
 }
 
 group_del() {
@@ -88,49 +564,6 @@ group_del() {
 
 group_exist() {
 	echo "N"
-}
-
-group_add_host() {
-	# temp file for menu output
-	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
-
-	# trap and delete temp file
-	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
-
-
-        # count number of host
-        local hostsum=$(ls $CLIENTHOME | wc -l)
-
-	# choose group to modify
-        dialog --title "Group List" --menu "Choose one group to modify" 10 60 $hostsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $OUTPUT
-
-	local groupid=$(<$OUTPUT)
-
-	# if user select cancel
-	if [ -z "$groupid" ]
-	then
-		# remove temp file
-		[ -f "$OUTPUT" ] && rm $OUTPUT
-	
-		return 0
-	fi
-
-	# choose hosts to add to group
-        dialog --title "Choose host(s)" --checklist "Choose one/more host(s) for add to group" 10 60 $hostsum $(for i in $(ls $CLIENTHOME/); do echo "$i ${i%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
-
-	# if user press cancel
-	if [ -z $(cat $OUTPUT) ]
-	then
-		# remove temp file
-		[ -f "$OUTPUT" ] && rm $OUTPUT
-	
-		return 0
-	fi
-
-	for i in $(<$OUTPUT)	
-	do
-		echo N	
-	done
 }
 
 group_showrule() {
@@ -1195,7 +1628,7 @@ group_mgmt_menu() {
 	        Choose the TASK" 16 55 6 \
 		1 "Add new group" \
 		2 "Delete a group" \
-		3 "Add/Remove host to/from group" \
+		3 "Modify group member" \
 		4 "Show member of group" \
 		5 "Add device/class to group" \
 	        Exit "Return to Main Menu" 2>"${OUTPUT}"
@@ -1215,7 +1648,7 @@ group_mgmt_menu() {
 	        case $menuitem in
 			1) group_add;;
 			2) group_del;;
-			3) group_add_host;;
+			3) group_modify_member;;
 			4) group_showmemebter;;
 			5) group_add;;
 	                Exit) break;;
