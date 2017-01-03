@@ -4,6 +4,7 @@
 # This is not free software yes. I hope its free soon
 
 rsync -av --delete --exclude 'group' --exclude "hosts/*" /home/behrad/Behrad\ Eslamifar/My-Script/git/yasa/etc/yasa/ /etc/yasa/
+rsync -av --delete /home/behrad/Behrad\ Eslamifar/My-Script/git/yasa/etc/yasa/skell/ /etc/yasa/skell/
 cp /home/behrad/Behrad\ Eslamifar/My-Script/git/yasa/sbin/yasa /sbin/
 if [ ! -L /etc/puppet/modules/yasa ] 
 then
