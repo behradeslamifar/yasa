@@ -6,3 +6,8 @@
 /bin/cp -ar usr/lib/yasa /usr/lib/
 /bin/cp -ar usr/share/doc/yasa /usr/share/doc/
 /bin/cp -ar etc/yasa/skell /etc/yasa/
+
+# correct permissions
+chmod a+x /sbin/yasa
+find /etc/yasa/ -type d -exec chmod 755 '{}' \;
+find /etc/yasa/skell -type f -exec chmod 644 '{}' \; 
