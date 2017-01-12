@@ -2000,7 +2000,7 @@ force_client_update() {
 	then
 		[ -f "$OUTPUT" ] && rm $OUTPUT
 		[ -f "$failedhost" ] && rm $failedhost
-		exit 1
+		return 1
 	fi
 
 	for hostid in $(<$OUTPUT)	
@@ -2030,7 +2030,44 @@ force_client_update() {
 } 
 
 accept_ready_client() {
-echo N
+	# temperorly file 
+        OUTPUT=$(mktemp /tmp/usb.XXXXXXXX)
+
+        # trap and delete temp file
+        trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+	# local variable
+	local hostid
+	local hostsum=$(ls $CLIENHOME | wc -l)
+
+	dialog --title "Choose host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts off $(for i in $(puppet cert list | tr -s ' ' | cut -f 1 -d " " | tr -d '"'); do echo "$i ${i%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
+
+	# get response
+	response=$?
+
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		return 1
+	fi
+
+	for hostid in $(<$OUTPUT)	
+	do
+	    if [ "$hostid" == all ]
+	    then
+		for hostid in $(ls $CLIENTHOME)
+		do
+		    puppet cert sign $hostid
+		done
+		break
+	    fi
+	    puppet cert sign $hostid
+	done
+
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+
+	return 0
 }
 
 yasacron() {
