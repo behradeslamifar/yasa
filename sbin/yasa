@@ -601,6 +601,66 @@ group_modify_member() {
 		
 }
 
+group_modify() {
+	# temp file for menu output
+	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+
+	# group name variable
+	local groupid
+
+        # choose group to modify
+        dialog --backtitle "Group Management" --title "Group List" --menu "Choose one group to modify" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $OUTPUT
+
+	# get response
+	response=$?
+
+	# save dialog output in variable
+	groupid=$(<$OUTPUT)
+	
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then 
+		# remove temp file
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		
+		return 1
+	fi
+	
+	# modify group
+	group_modify_rule $groupid
+
+	# if press cancel remove group folder
+	response=$?
+
+	if [ "$response" == "1" ]
+	then
+		rm -r $GRPHOME/$groupid
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		return 1
+	fi
+
+	# modify member
+	group_modify_member $groupid
+
+	# if press cancel remove group folder
+	response=$?
+
+	if [ "$response" == "1" ]
+	then
+		rm -r $GRPHOME/$groupid
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		return 1
+	fi
+
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+				
+	return 0
+}
+
 group_add() {
 	# temp file for menu output
 	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
@@ -706,6 +766,19 @@ group_del() {
 	        # count number of group
 	        groupsum=$(ls $GRPHOME | wc -l)
 	
+		# back to ment if not any group
+		if [ "$groupsum" == "0" ]
+		then
+			echo "Not any group exist yet." > $OUTPUT
+			dialog --backtitle "Group Management" --title "Delete Group Memeber(s)" --textbox $OUTPUT 5 50
+
+			# remove temp file
+			[ -f "$OUTPUT" ] && rm $OUTPUT
+        		[ -f "$oldmemberlist" ] && rm $oldmemberlist
+
+			return 1
+		fi
+
 	        # choose group to modify
 	        dialog --backtitle "Group Management" --title "Group List" --menu "Choose one group to add/remove member" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $OUTPUT
 	
@@ -2003,6 +2076,13 @@ force_client_update() {
 		return 1
 	fi
 
+	if [ -z "$(<$OUTPUT)" ]
+	then
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		[ -f "$failedhost" ] && rm $failedhost
+		return 1
+	fi
+
 	for hostid in $(<$OUTPUT)	
 	do
 	    if [ "$hostid" == all ]
@@ -2018,8 +2098,13 @@ force_client_update() {
 	    host_deploy_config $hostid silent >> $failedhost		
 	done
 
-
-	dialog --backtitle "Yasa Management" --title "Failed Host(s)" --textbox $failedhost 10 80
+	if [ -z "$(<$failedhost)" ]
+	then
+		echo "Client configuration deployment Process successfuly done."
+		dialog --backtitle "Yasa Management" --title "Client Deployment" --textbox $failedhost 10 80
+	else
+		dialog --backtitle "Yasa Management" --title "Failed Host(s)" --textbox $failedhost 10 80
+	fi
 
 	# remove temp file
 	[ -f "$OUTPUT" ] && rm $OUTPUT
@@ -2038,14 +2123,28 @@ accept_ready_client() {
 
 	# local variable
 	local hostid
-	local hostsum=$(ls $CLIENHOME | wc -l)
+	local hostsum=$(puppet cert list | wc -l)
+	
+	if [ "$hostsum" == "0" ] 
+	then
+		echo "Not any client exist in waiting list" > $OUTPUT
+		dialog --backtitle "Yasa Management" --title "Accept New Client" --textbox $OUTPUT 5 50
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		return 1
+	fi
 
-	dialog --title "Choose host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts off $(for i in $(puppet cert list | tr -s ' ' | cut -f 1 -d " " | tr -d '"'); do echo "$i ${i%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
+	dialog --title "Choose host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts off $(for i in $(puppet cert list | tr -s ' ' | sed 's/ \"/\"/' | cut -f 1 -d " " | tr -d '"'); do echo "$i ${i%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
 
 	# get response
 	response=$?
 
 	if [ "$response" == "1" -o "$response" == "255" ]
+	then
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		return 1
+	fi
+
+	if [ -z "$(<$OUTPUT)" ]
 	then
 		[ -f "$OUTPUT" ] && rm $OUTPUT
 		return 1
@@ -2213,7 +2312,7 @@ group_mgmt_menu() {
 	        Choose the TASK" 16 60 6 \
 		1 "Add new group" \
 		2 "Delete a group" \
-		3 "Modify group member" \
+		3 "Modify group" \
 		4 "Show group (show member and rules)" \
 	        Exit "Return to Main Menu" 2>"${OUTPUT}"
 	
@@ -2232,7 +2331,7 @@ group_mgmt_menu() {
 	        case $menuitem in
 			1) group_add;;
 			2) group_del;;
-			3) group_modify_member;;
+			3) group_modify;;
 			4) group_show;;
 	                Exit) break;;
 	        esac

@@ -2,10 +2,13 @@
 
 [ ! -d DEBIAN ] && echo "Please cd in yasa new version and then run install script again" && exit 1
 
+/bin/ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
 /bin/cp -a sbin/yasa /sbin/yasa
 /bin/cp -ar usr/lib/yasa /usr/lib/
 /bin/cp -ar usr/share/doc/yasa /usr/share/doc/
 /bin/cp -ar etc/yasa/skell /etc/yasa/
+/bin/cp -ar etc/yasa/yasa-client-install.sh /etc/yasa/
+/bin/cp -ar etc/yasa/group /etc/yasa
 
 # correct permissions
 chmod a+x /sbin/yasa

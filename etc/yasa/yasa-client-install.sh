@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Oraganization Domain
+DOMAIN=ioi.com
+
 # user must be root
 if [ "$(id -u)" != "0" ]
 then
@@ -52,6 +55,14 @@ echo "auth	any" >> /etc/puppet/auth.conf
 echo "allow	$server" >> /etc/puppet/auth.conf
 echo "auth.conf file ..... pass"
 
+hostname=$(hostname -f | grep "[a-zA-Z0-9]\+\.$DOMAIN$")
+if [ -z "$hostname" ]
+then
+	echo $(hostname).$HOSTNAME > /etc/hostname
+	hostname -F /etc/hostname
+	echo "Hostname corrction ..... pass"
+fi
+
 [ -f /etc/puppet/puppet.conf ] && mv /etc/puppet/puppet.conf /etc/puppet/puppet.conf.$(date +"%y%m%d-%H%M")
 cat <<EOF > /etc/puppet/puppet.conf
     vardir = /var/lib/puppet
@@ -63,7 +74,7 @@ cat <<EOF > /etc/puppet/puppet.conf
     report            = true
     pluginsync        = true
     masterport        = 8140
-    certname          = $(hostname -f)
+    certname          = $hostname
     server            = $server
     listen            = true
     splay             = false
