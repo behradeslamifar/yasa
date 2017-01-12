@@ -3,6 +3,9 @@
 # development state
 develop=0
 
+# enable administrative log. 1: enabel, 0: disable
+ADMIN_LOG=1
+
 # Home
 YASAHOME='/etc/yasa'
 
@@ -896,6 +899,23 @@ find $CLIENTHOME -name "grp.$groupid" | sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_
 				
 	return 0
 
+}
+
+yasa_admin_log(){
+	# local variables
+	local section=$1
+	shift
+	local message=$@
+
+	# check ADMIN LOG is active?
+	if [ "$ADMIN_LOG" == "0" -o "$ADMIN_LOG" == "off" -o "$ADMIN_LOG" == "false" ]
+	then
+		return 1
+	fi	
+
+	logger -p local1.info "Yasa Admin Log,$section:	$message"
+
+	return 0
 }
 
 report_log() {
@@ -2161,7 +2181,7 @@ report_menu() {
 	return 0
 }
 
-install_menu() {
+yasa_mgmt_menu() {
 	# Menu input
 	local OUTPUT=$(mktemp /tmp/usb.XXXXXXXX)
 	
@@ -2179,6 +2199,8 @@ install_menu() {
 	        Choose the TASK" 12 55 6 \
 		1 "Intall new client wizard" \
 		2 "Prepare server installation" \
+		3 "Force Client Update" \
+		4 "Accept Ready Client" \
 	        Exit "Return to Main Menu" 2>"${OUTPUT}"
 	
 	        local menuitem=$(<"${OUTPUT}")
@@ -2195,15 +2217,15 @@ install_menu() {
 	        # make decision
 	        case $menuitem in
 			1) install_client_wizard;;
-			2) report_deactive;;
+			2) yasa_paration;;
+			3) force_client_update;;
+			4) accept_ready_client;;
 	                Exit) break;;
 	        esac
 	
 
 	done	
 	return 0
-
-	echo "N"
 }
 
 # Non-interactive mod
@@ -2237,7 +2259,7 @@ else
 		1 "Client Management" \
 		2 "Group Management" \
 	        3 "Reports" \
-	        4 "Installation Client and Server" \
+	        4 "Yasa Management and Utility" \
 	        Exit "Exit and Logout" 2>"${MAININPUT}"
 	
 	        menuitem=$(<"${MAININPUT}")
@@ -2256,7 +2278,7 @@ else
 			1) client_mgmt_menu;;
 			2) group_mgmt_menu;;
 	                3) report_menu;;
-	                4) install_menu;;
+	                4) yasa_mgmt_menu;;
 	                Exit) echo "Bye"; break;;
 	        esac
 	done
