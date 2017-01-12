@@ -437,9 +437,12 @@ host_write_rule() {
     
     local hostid="$1"
     local hostpath="$CLIENTHOME/$hostid"
+    local groupid
 
-    if [ -e "$hostpath/temp/grp.*" ]
+    if [ -e $hostpath/temp/grp.* ]
     then
+	groupid=$(ls $hostpath/temp/grp.*)
+	groupid=${groupid##*.}
 	cp $GRPHOME/$groupid/etc/10-usblock.rules $CLIENTHOME/$hostid/etc/
     
     else
@@ -486,16 +489,18 @@ host_write_rule() {
 
 host_deploy_config() { 
 	local hostid="$1"
+	local mod=$2
 	local result
 
 	if [ "$develop" == "0" ] 
 	then
-		puppet kick $hostid
+		puppet kick $hostid >/dev/null 2>&1
 		result=$?
 		
 		if [ "$result" != "0" ]
 		then
-			dialog --msgbox "$hostid deployment failed." 6 50		
+			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed." 6 50	
+			echo "$hostid"	
 		fi
 	fi
 	
@@ -1966,6 +1971,68 @@ install_client_wizard() {
 
 }
 
+yasa_paration() {
+	echo N	
+}
+                                                                
+force_client_update() {
+	# temperorly file 
+        OUTPUT=$(mktemp /tmp/usb.XXXXXXXX)
+	failedhost=$(mktemp /tmp/usb.XXXXXXXX)
+
+        # trap and delete temp file
+        trap "rm $OUTPUT; exit" SIGHUP SIGINT SIGTERM
+        trap "rm $failedhost; exit" SIGHUP SIGINT SIGTERM
+
+	# local variables
+	local hostid
+	local response
+	local hostsum
+
+	hostsum=$(ls $CLIENHOME | wc -l)
+
+	dialog --title "Choose host(s)" --checklist "Choose one/more/all host(s) to update whitelist" 10 60 $hostsum all hosts off $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} off " | tr -d "\n"; done) 2> $OUTPUT
+	
+	# get response
+	response=$?
+
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then
+		[ -f "$OUTPUT" ] && rm $OUTPUT
+		[ -f "$failedhost" ] && rm $failedhost
+		exit 1
+	fi
+
+	for hostid in $(<$OUTPUT)	
+	do
+	    if [ "$hostid" == all ]
+	    then
+		for hostid in $(ls $CLIENTHOME)
+		do
+		    host_write_rule $hostid
+		    host_deploy_config $hostid silent >> $failedhost		
+		done
+		break
+	    fi
+	    host_write_rule $hostid
+	    host_deploy_config $hostid silent >> $failedhost		
+	done
+
+
+	dialog --backtitle "Yasa Management" --title "Failed Host(s)" --textbox $failedhost 10 80
+
+	# remove temp file
+	[ -f "$OUTPUT" ] && rm $OUTPUT
+	[ -f "$failedhost" ] && rm $failedhost
+
+	return 0
+
+} 
+
+accept_ready_client() {
+echo N
+}
+
 yasacron() {
         # temperorly file 
         TEMP=$(mktemp /tmp/usb.XXXXXXXX)
@@ -2192,11 +2259,11 @@ yasa_mgmt_menu() {
 	do
 	        ### display main menu ###
 	        /usr/bin/dialog --clear --backtitle "Yasa Install Menu" \
-	        --title "[ I N S T A L L - M E N U ]" \
+	        --title "[ M A N A G E M E M E N T - M E N U ]" \
 	        --menu "You can use the UP/DOWN arrow keys, the first \
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 12 55 6 \
+	        Choose the TASK" 14 60 9 \
 		1 "Intall new client wizard" \
 		2 "Prepare server installation" \
 		3 "Force Client Update" \
