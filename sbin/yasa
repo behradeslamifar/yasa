@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 # development state
 develop=0
@@ -373,17 +373,33 @@ group_modify_rule() {
 	   	return 1
 	   fi
 
-	   # modify device that allow in group
-	   group_modify_dev $groupid
+	   # Modify device whitelist
+	   while true
+	   do
+	   	# modify device that allow in group
+	   	group_modify_dev $groupid
 
-	   # if press cancel remove group folder
-	   response=$?
+	   	# if press cancel remove group folder
+	   	response=$?
 
-	   if [ "$response" == "1" ]
-	   then
-	   	[ -f "$OUTPUT" ] && rm $OUTPUT
-	   	return 1
-	   fi
+	   	if [ "$response" == "1" ]
+	   	then
+	   		break
+	   	fi
+		
+		# add another device
+		dialog --backtitle "Group Management" --title " Another Device " --yesno "Do you add another device to whitelist?" 6 50
+		
+		# get response
+		response=$?
+
+		if [ "$response" == "0" ]
+		then
+			continue
+		else
+			break
+		fi
+	   done
 
 	   # create udev rule
 	   group_udev_gen $groupid
@@ -417,11 +433,11 @@ group_find_member() {
 	local groupid="$1"
 	local hostid="$2"
 
-	group_member=$(ls $CLIENTHOME/$hostid/temp/grp.* | grep "\<$groupid\>")
+	group_member=$(ls $CLIENTHOME/$hostid/temp/grp.* 2>/dev/null | grep "\<$groupid\>")
 	if [ ! -z "$group_member" ]
 	then 
 		echo "on"
-	else 
+	else
 		echo "off"
 	fi
 
@@ -520,6 +536,7 @@ group_modify_member() {
 	local groupsum
 	local hostsum
 	local groupfilepath
+	local reponse
 
 	# if function had argument
 	if [ ! -z "$1"	]
@@ -550,8 +567,11 @@ group_modify_member() {
         # choose hosts to add to group
         dialog --title "Choose host(s)" --checklist "Choose one/more host(s) for add to group" 10 60 $hostsum $(for i in $(ls $CLIENTHOME/); do echo "$i ${i%%.*} $(group_find_member $groupid $i) " | tr -d "\n"; done) 2> $OUTPUT
 
+	# get response
+	response=$?
+
         # if user press cancel
-        if [ -z "$(cat $OUTPUT)" ]
+        if [ "$response" == "1" -o "$response" == "255" ]
         then
                 # remove temp file
                 [ -f "$OUTPUT" ] && rm $OUTPUT
@@ -563,9 +583,9 @@ group_modify_member() {
 	# remove all old member
 	find $CLIENTHOME -type f -name "grp.$groupid" -exec sh -c "echo -n '{} ' >> $oldmemberlist" \;
 
-	for hostid in $(<$OUTPUT)
+	[ ! -z "$(<$OUTPUT)" ] && for hostid in $(<$OUTPUT)
 	do
-		rm $CLIENTHOME/$hostid/temp/grp.*
+		rm $CLIENTHOME/$hostid/temp/grp.* 2> /dev/null
 		touch $CLIENTHOME/$hostid/temp/grp.$groupid
 
 		# remove from old list
@@ -575,18 +595,20 @@ group_modify_member() {
 		[ ! -z "$hostid" ] && host_write_rule $hostid
 	done
 
-	for hostid in $(<$OUTPUT)
+	[ ! -z "$(<$OUTPUT)" ] && for hostid in $(<$OUTPUT)
 	do
 		[ ! -z "$hostid" ] && host_deploy_config $hostid
 	done
 
-	for I in $(<$oldmemberlist)
+	# Remove old member from group
+	[ ! -z "$(<$oldmemberlist)" ] && for I in $(<$oldmemberlist)
 	do
 		hostid=$(echo $I |  sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_")
-		rm -r $CLIENTHOME/$hostid/temp/grp.*
+		rm -r $CLIENTHOME/$hostid/temp/grp.* 2> /dev/null
 		[ ! -z "$hostid" ] && host_write_rule $hostid
 	done
 
+	# Deploy new config for removed member
 	for I in $(<$oldmemberlist)
 	do
 		hostid=$(echo $I |  sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_")
@@ -702,9 +724,7 @@ group_add() {
 			cp -ar $TEMPHOME/group/* $GRPHOME/$groupid
 		
 			break
-	
 		fi
-		
 	done
 
 	# modify group
@@ -717,6 +737,7 @@ group_add() {
 	then
 		rm -r $GRPHOME/$groupid
 		[ -f "$OUTPUT" ] && rm $OUTPUT
+		dialog --backtitle "Group Management" --title "Adding Group Failed !"  --msgbox "Adding group failed during error or user cancelation." 5 60
 		return 1
 	fi
 
@@ -730,6 +751,7 @@ group_add() {
 	then
 		rm -r $GRPHOME/$groupid
 		[ -f "$OUTPUT" ] && rm $OUTPUT
+		dialog --backtitle "Group Management" --title "Adding Group Failed !"  --msgbox "Adding group failed during error or user cancelation." 5 60
 		return 1
 	fi
 
