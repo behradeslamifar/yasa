@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash 
 
 # development state
 develop=0
@@ -663,6 +663,19 @@ group_modify() {
 
 	# group name variable
 	local groupid
+	local groupsum
+
+	# show list of groups
+	# count number of group
+	groupsum=$(ls $GRPHOME | wc -l)
+	
+	# if no any group 
+	if [ "$groupsum" == "0" ] 
+	then
+		dialog --backtitle "Group Management" --title "Modify Group" --msgbox "No Groups" 6 30
+
+		return 1
+	fi
 
         # choose group to modify
         dialog --backtitle "Group Management" --title "Group List" --menu "Choose one group to modify" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $OUTPUT
@@ -925,6 +938,7 @@ group_show() {
 	# local variable
 	local response
 	local groupid
+	local groupsum
 
 	while true
 	do
