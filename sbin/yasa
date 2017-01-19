@@ -526,6 +526,7 @@ group_modify_member() {
 	# temp file for menu output
 	local OUTPUT=$(mktemp /tmp/usb.XXXXXXX)
 	local oldmemberlist=$(mktemp /tmp/usb.XXXXXXX)
+	local failedhost=$(mktemp /tmp/usb.XXXXXXX)
 
 	# trap and delete temp file
 	trap "rm $OUTPUT $oldmemberlist; exit" SIGHUP SIGINT SIGTERM
@@ -597,7 +598,10 @@ group_modify_member() {
 
 	[ ! -z "$(<$OUTPUT)" ] && for hostid in $(<$OUTPUT)
 	do
-		[ ! -z "$hostid" ] && host_deploy_config $hostid
+		if [ ! -z "$hostid" ] 
+		then
+			host_deploy_config $hostid silent >> $failedhost                                                                         
+		fi
 	done
 
 	# Remove old member from group
@@ -612,8 +616,20 @@ group_modify_member() {
 	for I in $(<$oldmemberlist)
 	do
 		hostid=$(echo $I |  sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_")
-		[ ! -z "$hostid" ] && host_deploy_config $hostid
+		if [ ! -z "$hostid" ] 
+		then
+			host_deploy_config $hostid silent >> $failedhost
+		fi
 	done
+
+        if [ -z "$(<$failedhost)" ]    
+        then
+                echo "Client configuration deployment Process successfuly done." > $failedhost
+                dialog --backtitle "Group Management" --title "Client Deployment" --textbox $failedhost 10 80
+        else
+                dialog --backtitle "Group Management" --title "Failed Host(s)" --textbox $failedhost 10 80
+        fi
+
 
         # remove temp file
         [ -f "$OUTPUT" ] && rm $OUTPUT
@@ -621,6 +637,21 @@ group_modify_member() {
 
         return 0
 		
+       for hostid in $(<$OUTPUT)       
+        do
+            if [ "$hostid" == all ]        
+            then              
+                for hostid in $(ls $CLIENTHOME)
+                do            
+                    host_write_rule $hostid        
+                    host_deploy_config $hostid silent >> $failedhost                                                                         
+                done
+                break         
+            fi
+            host_write_rule $hostid        
+            host_deploy_config $hostid silent >> $failedhost                                                                                 
+        done
+
 }
 
 group_modify() {
@@ -2122,7 +2153,7 @@ force_client_update() {
 
 	if [ -z "$(<$failedhost)" ]
 	then
-		echo "Client configuration deployment Process successfuly done."
+		echo "Client configuration deployment Process successfuly done." > $failedhost
 		dialog --backtitle "Yasa Management" --title "Client Deployment" --textbox $failedhost 10 80
 	else
 		dialog --backtitle "Yasa Management" --title "Failed Host(s)" --textbox $failedhost 10 80
