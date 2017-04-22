@@ -1633,8 +1633,6 @@ showwhitedev() {
 
 		fi
 
-
-
 		# change unix time to normal time
 		sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $CLIENTHOME/$hostid/temp/$WDEVICE | cat -s > $OUTPUT
 		dialog --textbox $OUTPUT 10 80

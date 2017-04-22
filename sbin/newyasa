@@ -11,8 +11,141 @@ trap "" SIGINT
 # Load default configuration
 source /etc/default/yasa
 
+host_write_rule() { 
+    # temperorly file 
+    TEMP=$(mktemp /tmp/usb.XXXXXXXX)
+    
+    # trap and delete temp file
+    trap "rm $TEMP; exit" SIGHUP SIGINT SIGTERM
+    
+    local hostid="$1"
+    local hostpath="$CLIENTHOME/$hostid"
+    local groupid
 
-group_modify_class() { 
+    if [ -e $hostpath/temp/grp.* ]
+    then
+	groupid=$(ls $hostpath/temp/grp.*)
+	groupid=${groupid##*.}
+	cp $GRPHOME/$groupid/etc/10-usblock.rules $CLIENTHOME/$hostid/etc/
+    
+    else
+	echo "" > "$hostpath/temp/25-default-whitelist"
+	cat "$hostpath/temp/$WCLASS" | grep -v "^#\|^$" | while read line; do
+                echo "ATTR{bInterfaceClass}==\"$line\", ENV{valid}=\"2\""  >> "$hostpath/temp/25-default-whitelist"
+	done
+	
+	echo "" > "$hostpath/temp/20-whitelist"
+        cat "$hostpath/temp/$WDEVICE" | grep -v "^#\|^$" > $TEMP
+	
+	while read validtime vid pid serial 
+	do
+	        if [ -z "$serial" -a -z "$pid" ]
+		then
+	                echo "ATTR{idVendor}==\"$vid\", ENV{valid}=\"1\""  >> "$hostpath/temp/20-whitelist"
+	                echo "ATTRS{idVendor}==\"$vid\", ENV{valid}=\"2\""  >> "$hostpath/temp/20-whitelist"
+		elif [ -z "$serial" ]
+		then
+	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ENV{valid}=\"1\""  >> "$hostpath/temp/20-whitelist"
+	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ENV{valid}=\"2\""  >> "$hostpath/temp/20-whitelist"
+	        else
+	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ATTR{serial}==\"$serial\", ENV{valid}=\"1\"" >> "$hostpath/temp/20-whitelist"
+	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ATTRS{serial}==\"$serial\", ENV{valid}=\"2\"" >> "$hostpath/temp/20-whitelist"
+	        fi
+	done < $TEMP
+	
+	for I in $hostpath/temp/[0-9]*
+	do
+		if [ ! -z "$(echo $I | grep '10-header$')" ]
+		then
+			cat $I > "$hostpath/etc/10-usblock.rules"
+		else 
+			cat $I >> "$hostpath/etc/10-usblock.rules"
+		fi
+	done
+    fi
+
+	#remove temp file
+	[ -f "$TEMP" ] && rm $TEMP
+
+	return 0
+}
+
+host_deploy_config() { 
+	local hostid="$1"
+	local mod=$2
+	local result
+
+	if [ "$DEVELOP" == "0" ] 
+	then
+		puppet kick $hostid >/dev/null 2>&1
+		result=$?
+		
+		if [ "$result" != "0" ]
+		then
+			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 65	
+			echo "$hostid"	
+			
+			return 1
+		fi
+	fi
+	
+	return 0
+}
+
+
+device_existence_check() {
+	## This function check existance of device in whitelist
+	## $1 -> host,group , $2 -> hostid,groupid 
+	local type=$1
+	local id=$2
+	local groupid="$3"
+        local vendorid="$4"
+        local productid="$5"
+        local serial="$6"
+
+	# set home
+	if [ "$type" == "host" ]
+	then
+		home=$CLIENTHOME
+	else
+		home=$GRPHOME
+	fi
+
+	# return 1 if device not added befor
+	[ -z $(grep ".*$vendorid.*$productid.*$serial.*" $home/$id/$WDEVICE | cut -f 1 -d " ") ] && return 1
+
+	# return 0 if device already exist 
+	return 0
+}
+
+class_existence_check() {
+	## This function check existance of class in whitelist
+	## $1 -> host,group , $2 -> hostid,groupid 
+	local type=$1
+	local id=$2
+	local classid="$3"
+
+	# set home
+	if [ "$type" == "host" ]
+	then
+		home=$CLIENTHOME
+	else
+		home=$GRPHOME
+	fi
+
+	# return 1 if device not added befor
+	[ -z $(grep "$classid" $home/$id/temp/$WCLASS | cut -f 1 -d " ") ] && echo "off" && return 1
+
+	# return 0 if device already exist 
+	echo "on"	
+
+	return 0
+
+}
+
+modify_class() { 
+	## This function create iWCLASS (class.allow) file for host and for group, both.
+	## $1 -> host,group , $2 -> hostid,groupid 
 	# temp file for dialog output
 	local output=$(mktemp /tmp/usb.XXXXXXX)
 
@@ -25,41 +158,44 @@ group_modify_class() {
 	local id=$2
 	local classid
 	local home
+	local backtitle
 
 	# set home
 	if [ "$type" == "host" ]
 	then
 		home=$CLIENTHOME
+		backtitle="Client Management"
 	else
 		home=$GRPHOME
+		backtitle="Group Management"
 	fi
 
 	# choose between usb class
-        /usr/bin/dialog --backtitle "Usb lock main menu" \
+        /usr/bin/dialog --backtitle "$backtitle" \
         --title "[ List of USB Class ]" \
         --checklist "Choose a class to add to whitelist" 13 60 22 \
-	00h "Use class information in the Interface Descriptors" off \
-	01h "Audio" off \
-	02h "Communications and CDC Control" off \
-	03h "HID (Human Interface Device)" on \
-	05h "Physical" off \
-	06h "Image" off \
-	07h "Printer" off \
-	08h "Mass Storage" off \
-	09h "Hub" on \
-	0Ah "CDC-Data" off \
-	0Bh "Smart Card" off \
-	0Dh "Content Security" off \
-	0Eh "Video" off \
-	0Fh "Personal Healthcare" off \
-	10h "Audio/Video Devices" off \
-	11h "Billboard Device Class" off \
-	12h "USB Type-C Bridge Class" off \
-	DCh "Diagnostic Device" off \
-	E0h "Wireless Controller" off \
-	EFh "Miscellaneous" off \
-	FEh "Application Specific" off \
-	FFh "Vendor Specific" off 2> $output
+	00h "Use class information in the Interface Descriptors" $(class_existence_check $type $id 00) \
+	01h "Audio" $(class_existence_check $type $id 01) \
+	02h "Communications and CDC Control" $(class_existence_check $type $id 02) \
+	03h "HID (Human Interface Device)" $(class_existence_check $type $id 03) \
+	05h "Physical" $(class_existence_check $type $id 05) \
+	06h "Image" $(class_existence_check $type $id 06) \
+	07h "Printer" $(class_existence_check $type $id 07) \
+	08h "Mass Storage" $(class_existence_check $type $id 08) \
+	09h "Hub" $(class_existence_check $type $id 09) \
+	0Ah "CDC-Data" $(class_existence_check $type $id 0A) \
+	0Bh "Smart Card" $(class_existence_check $type $id 0B) \
+	0Dh "Content Security" $(class_existence_check $type $id 0D) \
+	0Eh "Video" $(class_existence_check $type $id 0E) \
+	0Fh "Personal Healthcare" $(class_existence_check $type $id 0F) \
+	10h "Audio/Video Devices" $(class_existence_check $type $id 10) \
+	11h "Billboard Device Class" $(class_existence_check $type $id 11) \
+	12h "USB Type-C Bridge Class" $(class_existence_check $type $id 12) \
+	DCh "Diagnostic Device" $(class_existence_check $type $id DC) \
+	E0h "Wireless Controller" $(class_existence_check $type $id E0) \
+	EFh "Miscellaneous" $(class_existence_check $type $id EF) \
+	FEh "Application Specific" $(class_existence_check $type $id FE) \
+	FFh "Vendor Specific" $(class_existence_check $type $id FF) 2> $output
 
 	# save dialog state (find if user press cancel)
 	response=$?
@@ -81,6 +217,14 @@ group_modify_class() {
 		echo $classid >> $home/$id/temp/$WCLASS 	
 	done
 
+	# create udev rule file
+	if [ "$type" == "group" ] 
+	then
+		group_udev_gen $id
+	fi
+	
+	host_write_rule $id
+
 	# remove temp file
 	[ -f "$output" ] && rm $output
 
@@ -88,19 +232,267 @@ group_modify_class() {
 
 }
 
-group_device_existence_check() {
-	local groupid="$1"
-        local vendorid="$2"
-        local productid="$3"
-        local serial="$4"
+modify_add_dev() {
+	## This function create WDEVICE (dev.allow) file for host and for group, both.
+	## $1 -> host,group , $2 -> hostid,groupid 
+	# temp file for dialog output
+	local output=$(mktemp /tmp/usb.XXXXXXX)
+	local normal_log1=$(mktemp /tmp/usb.XXXXXXX)
+	local normal_log2=$(mktemp /tmp/usb.XXXXXXX)
 
-	# return 1 if device not added 
-	[ -z $(grep ".*$vendorid.*$productid.*$serial.*" $GRPHOME/$groupid/$WDEVICE | cut -f 1 -d " ") ] && return 1
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+	trap "rm $normal_log1; exit" SIGHUP SIGINT SIGTERM
+	trap "rm $normal_log2; exit" SIGHUP SIGINT SIGTERM
 
-	# return 0 if device already exist 
+	# local variable
+	# $1 -> host,group , $2 -> hostid,groupid
+	local type=$1
+	local id=$2
+	local home
+	local log_line_number
+	local validtime
+	local currenttime
+
+	# define local array
+	local log_line_array=()
+	local log_line=()
+
+
+	# set home
+	if [ "$type" == "host" ]
+	then
+		home=$CLIENTHOME
+		backtitle="Client Management"
+	else
+		home=$GRPHOME
+		backtitle="Group Management"
+	fi
+	
+	# loop for find device information from Yasa log
+	while true
+	do
+	    # search based on ip address
+	    dialog --backtitle "$backtitle" --inputbox "Please search the keywork to find your device (ip|hostname|device)" 8 80 2> $output
+
+	    # save dialog state (find if user press cancel)
+	    response=$?
+
+	    # save input variable
+	    keyword=$(<$output)
+
+	    # if user cancel the dialog or press escape 
+	    if [ "$response" == "1" -o "$response" == "255" ]
+	    then
+	    	[ -f "$output" ] && rm $output
+	    	[ -f "$normal_log1" ] && rm $normal_log1
+	    	[ -f "$normal_log2" ] && rm $normal_log2
+	    
+	    	return 1
+	    fi
+
+	    # normalize log file
+	    cat $DEVICELOG | grep -i "$keyword" | tail | tac | cat -n | expand  | tr -s ' ' | sed 's/ //' > "$normal_log1"
+	    echo $normal_log1
+	    if [ ! -z "$(<$normal_log1)" ]
+	    then
+		break
+	    fi
+	done
+
+	# second step normalize log file
+	cat "$normal_log1" | cut -f 1,3,5,6,7,8 -d " " > "$normal_log2"
+
+	while read n s ; do
+	    log_line_array+=($n "$s")
+	done < $normal_log2
+
+	dialog  --backtitle "$backtitle" --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 5 "${log_line_array[@]}" 2> $output
+
+	# get reponse
+	response=$?
+
+	# get data stored in $output
+	log_line_number=$(<$output)
+	
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then 
+		# remove temp files
+	    	[ -f "$output" ] && rm $output
+	    	[ -f "$normal_log1" ] && rm $normal_log1
+	    	[ -f "$normal_log2" ] && rm $normal_log2
+	
+		return 1
+	fi
+
+	# pick log line
+	log_line=($(sed -n "$log_line_number p" $normal_log2))
+
+	# check if device added befor
+	device_existence_check $type $id ${log_line[1]#*:} ${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:} && dialog --backtitle "$backtitle" --msgbox "Device already exist in whitelist" 5 38 && return 1
+
+	# input comment
+	dialog --backtitle "$backtitle" --inputbox "Write comment for this device" 8 80 "no comment" 2> $output
+	local comment=$(<$output)
+
+	# get response
+	response=$?
+
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then 
+		# remove temp files
+		[ -f "$output" ] && rm $output
+	    	[ -f "$normal_log1" ] && rm $normal_log1
+	    	[ -f "$normal_log2" ] && rm $normal_log2
+
+		return 1
+	fi
+
+	# input box for enter validation time in houre
+	while true
+	do
+		dialog --backtitle "$backtitle" --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $output
+		validtime=$(<$output)
+
+		# get response
+		response=$?
+
+		# if user cancel the dialog or press escape 
+		if [ "$response" == "1" -o "$response" == "255" ]
+		then 
+			# remove temp files
+			[ -f "$output" ] && rm $output
+			[ -f "$normal_log1" ] && rm $normal_log1
+			[ -f "$normal_log2" ] && rm $normal_log2
+	
+			return 1
+		fi
+
+		if [ "$validtime" = "0" ]
+		then
+			break
+		elif [ ! -z "$(echo $validtime | grep '^[1-9][0-9]*$')" ]
+		then
+			currenttime=$(date +"%s")
+			validtime=$(( $validtime * 60 * 60 + $currenttime ))
+			break
+		fi
+	done
+
+
+	# add new device to white list
+	echo -e "# comment $comment \n# ${log_line[1]} ${log_line[2] } \n${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:}\n" >> $home/$id/$WDEVICE
+
+	# create udev rule file
+	host_write_rule $id
+		
+	# remove temp file if exist
+	[ -f "$output" ] && rm $output
+	[ -f "$normal_log1" ] && rm $normal_log1
+	[ -f "$normal_log2" ] && rm $normal_log2
+	
 	return 0
+}
 
+modify_del_dev() {
+	# temp file for menu output
+	local output=$(mktemp /tmp/usb.XXXXXXX)
 
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+
+	# define array
+	local ar=()
+
+	# local variable
+	# $1 -> host,group , $2 -> hostid,groupid
+	local type=$1
+	local id=$2
+	local home
+	local backtitle
+	local device
+	local count
+	local comment
+	local linenum=0
+	local line
+
+	# set home
+	if [ "$type" == "host" ]
+	then
+		home=$CLIENTHOME
+		backtitle="Client Management"
+	else
+		home=$GRPHOME
+		backtitle="Group Management"
+	fi
+	
+	while read line 
+	do
+	        if [ ! -z "$(echo $line | grep "^# comment" )" ]
+	        then
+			((linenum++))
+	                comment=$line; count=1;
+	                continue
+	        elif [ "$count" = "1" ] && [ ! -z "$(echo $line | grep "^# From")" ]
+	        then
+	                device=$(echo $line | grep -o "Device:.*$")
+	                ar+=($linenum "$comment $device")
+	                count=0
+	        fi
+	done <$home/$id/temp/$WDEVICE	
+	
+	if [ -z "${ar[@]}" ]
+	then
+		dialog --backtitle "$backtitle" --msgbox "There isnt any device in whitelist" 5 40
+		# remove temp file
+		[ -f "$output" ] && rm $output
+	
+		return 0
+	fi
+
+	dialog  --backtitle "$backtitle" --title "List of white list" --menu "Choose one for delete from whitelist" 10 80 5 "${ar[@]}" 2> $output
+	
+	# save menu output
+	local devicenum=$(<$output)
+
+	if [ ! -z "$devicenum" ]
+	then
+		echo "" > $output
+		linenum=0
+	
+		while read line
+		do
+			if [ ! -z "$(echo $line | grep "^# comment")" ]
+			then
+				ucomment=$line
+				((linenum++))
+			elif [ ! -z "$(echo $line | grep "^# From:")" ]
+			then
+				scomment=$line
+			elif [ ! -z "$(echo $line | grep "^[0-9]" )" ]
+			then
+				if  [ "$linenum" != "$devicenum" ]
+				then
+					echo -e "$ucomment\n$scomment\n$line" >> $output
+				fi
+			else
+				echo $line >> $output
+			fi
+		done < $home/$id/temp/$WDEVICE
+	
+	 	cat -s $output > $home/$id/temp/$WDEVICE	
+		dialog --backtitle "$backtitle" --msgbox "Device deleted from whitelist" 5 35
+
+		# create udev rule file
+		host_write_rule $id
+	fi
+
+	# remove temp file
+	[ -f "$output" ] && rm $output
+	
+	return 0
 }
 
 group_modify_dev() {
@@ -185,7 +577,7 @@ group_modify_dev() {
 	log_line=($(sed -n "$log_line_number p" $INPUT1))
 
 	# check if device added befor
-	group_device_existence_check ${log_line[1]#*:} ${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:} && dialog --msgbox "Device already exist in whitelist" 5 38 && return 1
+	device_existence_check group $groupid ${log_line[1]#*:} ${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:} && dialog --msgbox "Device already exist in whitelist" 5 38 && return 1
 
 	# input comment
 	dialog --inputbox "Write comment for this device" 8 80 "no comment" 2> $output
@@ -238,7 +630,7 @@ group_modify_dev() {
 
 
 	# add new device to white list
-	echo -e "# comment $comment \n# ${log_line[1]} ${log_line[2] } \n${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:}\n" >> $GRPHOME/$groupid/$WDEVICE
+	echo -e "# comment $comment \n# ${log_line[1]} ${log_line[2] } \n${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:}\n" >> $GRPHOME/$groupid/temp/$WDEVICE
 		
 	# remove temp file if exist
 	[ -f "$INPUT1" ] && rm $INPUT1
@@ -256,7 +648,7 @@ group_udev_gen() {
     trap "rm $TEMP; exit" SIGHUP SIGINT SIGTERM
     
     local groupid="$1"
-    local grouppath="$GRPHOME/$groupid"
+    local grouppath="$GRPHOME/$groupid/temp"
 
 	echo "" > "$grouppath/25-default-whitelist"
 	cat "$grouppath/$WCLASS" | grep -v "^#\|^$" | while read line; do
@@ -344,7 +736,7 @@ group_modify_rule() {
 	   fi
 	   
 	   # modify class
-	   group_modify_class $groupid
+	   modify_class group $groupid
 
 	   # if press cancel remove group folder
 	   response=$?
@@ -423,87 +815,6 @@ group_find_member() {
 		echo "off"
 	fi
 
-	return 0
-}
-
-host_write_rule() { 
-    # temperorly file 
-    TEMP=$(mktemp /tmp/usb.XXXXXXXX)
-    
-    # trap and delete temp file
-    trap "rm $TEMP; exit" SIGHUP SIGINT SIGTERM
-    
-    local hostid="$1"
-    local hostpath="$CLIENTHOME/$hostid"
-    local groupid
-
-    if [ -e $hostpath/temp/grp.* ]
-    then
-	groupid=$(ls $hostpath/temp/grp.*)
-	groupid=${groupid##*.}
-	cp $GRPHOME/$groupid/etc/10-usblock.rules $CLIENTHOME/$hostid/etc/
-    
-    else
-	echo "" > "$hostpath/temp/25-default-whitelist"
-	cat "$hostpath/temp/$WCLASS" | grep -v "^#\|^$" | while read line; do
-                echo "ATTR{bInterfaceClass}==\"$line\", ENV{valid}=\"2\""  >> "$hostpath/temp/25-default-whitelist"
-	done
-	
-	echo "" > "$hostpath/temp/20-whitelist"
-        cat "$hostpath/temp/$WDEVICE" | grep -v "^#\|^$" > $TEMP
-	
-	while read validtime vid pid serial 
-	do
-	        if [ -z "$serial" -a -z "$pid" ]
-		then
-	                echo "ATTR{idVendor}==\"$vid\", ENV{valid}=\"1\""  >> "$hostpath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ENV{valid}=\"2\""  >> "$hostpath/temp/20-whitelist"
-		elif [ -z "$serial" ]
-		then
-	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ENV{valid}=\"1\""  >> "$hostpath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ENV{valid}=\"2\""  >> "$hostpath/temp/20-whitelist"
-	        else
-	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ATTR{serial}==\"$serial\", ENV{valid}=\"1\"" >> "$hostpath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ATTRS{serial}==\"$serial\", ENV{valid}=\"2\"" >> "$hostpath/temp/20-whitelist"
-	        fi
-	done < $TEMP
-	
-	for I in $hostpath/temp/[0-9]*
-	do
-		if [ ! -z "$(echo $I | grep '10-header$')" ]
-		then
-			cat $I > "$hostpath/etc/10-usblock.rules"
-		else 
-			cat $I >> "$hostpath/etc/10-usblock.rules"
-		fi
-	done
-    fi
-
-	#remove temp file
-	[ -f "$TEMP" ] && rm $TEMP
-
-	return 0
-}
-
-host_deploy_config() { 
-	local hostid="$1"
-	local mod=$2
-	local result
-
-	if [ "$DEVELOP" == "0" ] 
-	then
-		puppet kick $hostid >/dev/null 2>&1
-		result=$?
-		
-		if [ "$result" != "0" ]
-		then
-			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed." 6 50	
-			echo "$hostid"	
-			
-			return 1
-		fi
-	fi
-	
 	return 0
 }
 
@@ -914,7 +1225,7 @@ group_del() {
 	
 }
 
-group_show() {
+whitelist_show() {
 	# temp file for menu output
 	local output=$(mktemp /tmp/usb.XXXXXXX)
 
@@ -922,31 +1233,44 @@ group_show() {
 	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
 
 	# local variable
+	local type=$1
+	local id=$2
 	local response
-	local groupid
-	local groupsum
+	local idsum
+	local backtitle
+
+	# set home
+	if [ "$type" == "host" ]
+	then
+		home=$CLIENTHOME
+		backtitle="Client Management"
+	else
+		home=$GRPHOME
+		backtitle="Group Management"
+	fi
+
 
 	while true
 	do
 		# show list of groups
 	        # count number of group
-	        groupsum=$(ls $GRPHOME | wc -l)
+	        idsum=$(ls $home | wc -l)
 		
 		# if no groups
-		if [ "$groupsum" == "0" ] 
+		if [ "$idsum" == "0" ] 
 		then
-			dialog --backtitle "Group Management" --title "Modify Group" --msgbox "No Groups" 6 30
+			dialog --backtitle "$backtitle" --title "Modify Group" --msgbox "No Groups" 6 30
 
 			return 1
 		fi
 
 	        # choose group to modify
-	        dialog --backtitle "Group Management" --title "Group List" --menu "Choose a group. Press cancel to exit and Esc to start again" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i $i " | tr -d "\n"; done) 2> $output
+	        dialog --backtitle "$backtitle" --title "List" --menu "Choose one options. Press cancel to exit and Esc to start again" 10 60 $idsum $(for i in $(ls $home/); do echo "$i $i " | tr -d "\n"; done) 2> $output
 	
 		# get response
 		response=$?
 
-	        local groupid=$(<$output)
+	        local id=$(<$output)
 		
 		# if user cancel the dialog or press escape 
 		if [ "$response" == "1" ]
@@ -961,13 +1285,15 @@ group_show() {
 		fi
 
 		# show member in text box
-find $CLIENTHOME -name "grp.$groupid" | sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_" > $output
-
-		dialog --backtitle "Group Management" --title "Group Member(s)" --textbox $output 10 80
-
-		if [ "$response" == "255" ]
+		if [ "$type" == "group" ]
 		then
-			continue
+			find $CLIENTHOME -name "grp.$id" | sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_" > $output
+			dialog --backtitle "Group Management" --title "Group Member(s)" --textbox $output 10 80
+
+			if [ "$response" == "255" ]
+			then
+				continue
+			fi
 		fi
 
 		# show class
@@ -994,7 +1320,7 @@ find $CLIENTHOME -name "grp.$groupid" | sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_
 		        -e 's/E0/E0h Wireless Controller/' \
 		        -e 's/EF/EFh Miscellaneous/' \
 		        -e 's/FF/FEh Application Specific/' \
-		        -e 's/FF/FFh Vendor Specific/'  $GRPHOME/$groupid/$WCLASS | \
+		        -e 's/FF/FFh Vendor Specific/'  $home/$id/temp/$WCLASS | \
 							grep -v "^$" > $output
 		if [ -z "$(<$output)" ]
 		then
@@ -1012,13 +1338,13 @@ find $CLIENTHOME -name "grp.$groupid" | sed "s_$CLIENTHOME/\(.*\)/temp/grp.*_\1_
 	
 		# show device rule
 		# change unix time to normal time
-		sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $GRPHOME/$groupid/$WDEVICE | cat -s > $output
+		sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $home/$id/temp/$WDEVICE | cat -s > $output
 		if [ -z "$(<$output)" ]
 		then
 			echo "There is not exist any device in white list" > $output
 		fi
 
-		dialog --backtitle "Group Management" --title "White List Device(s)" --textbox $output 10 80
+		dialog --backtitle "$backtitle" --title "White List Device(s)" --textbox $output 10 80
 
 		# get response
 		response=$?
@@ -1245,7 +1571,8 @@ host_disable_yasa() {
 		return 2
 	fi
 
-	host_deploy_config $hostid silent
+	# generate udev config file
+	host_write_rule $hostid
 	
 	# get response
 	response=$?
@@ -1279,8 +1606,9 @@ host_enable_yasa() {
 		return 2
 	fi
 
-	host_deploy_config $hostid silent
-	
+	# generate udev config file
+	host_write_rule $hostid
+
 	# get response
 	response=$?
 	
@@ -1305,12 +1633,40 @@ host_is_it_member() {
         fi
 }
 
+host_sign() {
+	## Check host is signing.
+
+	# local variable
+	local hostid=$1
+	local response
+
+	puppet cert sign $hostid
+
+	# get response
+	if [ "$response" == "24" ]
+	then
+		if [ ! -z  "$(puppet cert list --all | tr -s ' ' | sed 's/^\(+ \| \)\"/\"/' | cut -f 1 -d " " | tr -d '"' | grep "\<$hostid\>")" ]
+		then
+			return 0
+		else
+			dialog --backtitle "Client Management" --msgbox "Could not find any request for \"$hostid\". Check client config."
+			
+			return 1
+		fi
+
+	fi
+
+	return 0
+}
+
+
 host_add() {
 	# local variables
 	local output=$(mktemp /tmp/usb.XXXXXXX)
 	local hostid
 	local response
 	local method
+	local sign_response
 
 	# trap and delete temp file
 	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
@@ -1346,28 +1702,40 @@ host_add() {
 	    if [ -z "$(echo "$hostid" | egrep "^(([a-zA-Z]{1})|([a-zA-Z]{1}[a-zA-Z]{1})|([a-zA-Z]{1}[0-9]{1})|([0-9]{1}[a-zA-Z]{1})|([a-zA-Z0-9][a-zA-Z0-9_-]{1,61}[a-zA-Z0-9]))\.([a-zA-Z]{2,6}|[a-zA-Z0-9-]{2,30}\.[a-zA-Z]{2,})$")" ] 
 	    then
 	    	dialog --backtitle "Client Management" --title "Error Message" --msgbox "Entered hostname is invalid, please use valid format" 6 60
+
+		# remove temp file
+	    	[ -f "$output" ] && rm $output
+	    	
+	    	return 1
 	    	
 	    elif [ ! -z "$(ls $CLIENTHOME | grep "^$hostid$")" ]
 	    then
 	    	dialog --backtitle "Client Management" --title "Error Message"  --msgbox "This host is exists" 5 25
+		# remove temp file
+	    	[ -f "$output" ] && rm $output
+	    	
+	    	return 1
 	    else
-		##bug
-		##check client singed or not
+
 		# sign client
+		echo 30 | dialog --backtitle "Client Management" --gauge "Signing $hostid ..." 7 70 0
 		host_sign $hostid
 
 		if [ "$?" != "0" ]
 		then
 			dialog --backtitle "Client Management" --title "Error Message"  --msgbox "Signing client failed. Please sign and force to deply config later" 5 40
+			sign_response=1
 		fi
 
 		# prepare host config
-	    	mkdir -p $CLIENTHOME/$hostid 
+		echo 70 | dialog --backtitle "Client Management" --gauge "Create default config ..." 7 70 0
+	    	mkdir -p $CLIENTHOME/$hostid cp -ar /etc/yasa/skell/{etc,temp} $CLIENTHOME/$hostid
 	    	cp -ar /etc/yasa/skell/{etc,temp} $CLIENTHOME/$hostid
 
 		##bug
 		##must have gauge bar for user friendly
-		host_deploy_config $hostid 
+		echo 30 | dialog --backtitle "Client Management" --gauge "Deploy config to client ..." 7 70 0
+		[ "$sign_resonse" != "1" ] && host_deploy_config $hostid 
 		break
 	    fi
 	done
@@ -1391,7 +1759,7 @@ host_del() {
 	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
 
         # list all hosts      
-        dialog --backtitle "Client Management" --title "Choose host(s) to delete from Yasa" --menu "Choose a hostname to delete from Yasa" 11 60 10 $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $output 
+        dialog --backtitle "Client Management" --title " Clients List " --menu "Choose a hostname to delete from Yasa" 11 60 10 $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $output 
         
 	# get response
 	response=$?
@@ -1435,7 +1803,7 @@ host_del() {
 		return 1
 	elif [ "$response" != "0" ]
 	then
-        	dialog --backtitle "Client Management" --msgbox "Disabling $hostid, failed. Host not deleted from Yasa" 5 70
+		dialog --backtitle "Client Management" --msgbox "Disabling $hostid, failed. Host not deleted from Yasa" 5 70
 		
 		# remove temp file
 		[ -f "$output" ] && rm $output
@@ -1443,7 +1811,22 @@ host_del() {
 		return 1
 	fi
 
-        # if all not selected
+	# deploy config with configuration management
+	host_deploy_config $hostid silent
+	
+	# get response
+	response=$?
+
+	if [ "$response" != "0" ]
+	then
+		 dialog --backtitle "Client Management" --msgbox "Disabling $hostid, failed. Host not deleted from Yasa" 5 70
+		# remove temp file
+		[ -f "$output" ] && rm $output
+	
+		return 1
+	fi
+	
+	# remove host folder from configurations
         rm -r $CLIENTHOME/$hostid
 
         dialog --backtitle "Client Management" --msgbox "The host deleted successfuly." 5 40
@@ -1455,7 +1838,7 @@ host_del() {
 }
 
 host_modify() {
-	# Modify host rule
+	## Modify host rule
 	
 	# lacal variables
 	local hostid
@@ -1466,7 +1849,7 @@ host_modify() {
 	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
 
         # list all hosts      
-        dialog --backtitle "Client Management" --title "Choose host(s) to delete from Yasa" --menu "Choose a hostname to delete from Yasa" 11 60 10 $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $output 
+        dialog --backtitle "Client Management" --title " Clients List " --menu "Choose a hostname to delete from Yasa" 11 60 10 $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $output 
         
 	# get response
 	response=$?
@@ -1492,7 +1875,7 @@ host_modify() {
 	if [ "$response" == "0" ]      
 	then                           
 	        groupid=$(host_is_it_member $hostid)
-	        dialog --msgbox "$hostid is memeber of \"$groupid\" group\nPlease modify group for make change in whitelist" 7 55   
+	        dialog --backtitle "Client Management" --msgbox "$hostid is memeber of \"$groupid\" group\nPlease modify group for make change in whitelist" 7 55   
 	
 	        # remove temp file if exist    
 	        [ -f "$output" ] && rm $output
@@ -1501,44 +1884,40 @@ host_modify() {
 	
 	fi   
 
-	# modify class
-	host_modify_class $hostid
-
-	# if press cancel remove group folder
-	response=$?
-
-	if [ "$response" == "1" ]
-	then
-		[ -f "$output" ] && rm $output
-		return 1
-	fi
-
-	# Modify device whitelist
+	# loop for modify host rule (add and remove class, add device, del device)
 	while true
 	do
-		# modify device that allow in group
-		host_modify_dev $hostid
-
-		# if press cancel remove group folder
+		# select what you want
+		dialog --backtitle "Client Management" --title "[ H O S T - M O D I F Y ]" \
+		--menu "Choose what you want to do.\n\
+		Press cancel to exit from this menu.\n\
+		Notice: After edit class and device list run \"Deploy Config Change\"" 16 70 5 \
+		1 "Add/Remove Class" \
+		2 "Add Device" \
+		3 "Delete Device" \
+		4 "Deploy Config Changes" \
+	        Exit "Return to Main Menu" 2>"${output}"
+	
+		# get response
 		response=$?
 
-		if [ "$response" == "1" ]
+		# if user enter cancel or press esc
+		if [ "$response" == "1" -o "$response" == "255" ]
 		then
-			break
-		fi
-	     
-	     # add another device
-	     dialog --backtitle "Client Management" --title " Another Device " --yesno "Do you add another device to whitelist?" 6 50
-	     
-	     # get response
-	     response=$?
+		        # remove temp file
+		        [ -f "$output" ] && rm $output
 
-	     if [ "$response" == "0" ]
-	     then
-	     	continue
-	     else
-	     	break
-	     fi
+			return 0
+		fi
+
+	        # make decision
+	        case $(<$output) in
+			1) modify_class host $hostid;;
+			2) modify_add_dev host $hostid;;
+			3) modify_del_dev host $hostid;;
+	                4) host_deploy_config $hostid;;
+	                Exit) echo "Bye"; break;;
+	        esac
 	done
 
 	# remove temp file
@@ -1547,12 +1926,69 @@ host_modify() {
 	return 0
 }
 
-host_show() {
-	echo N
-}
-
 host_en_dis() {
-	echo N
+	## This function use for enable and disable yasa on client
+
+	# lacal variables
+	local hostid
+	local response
+	local output=$(mktemp /tmp/output.XXXXXXX) 
+	
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+
+        dialog --backtitle "Client Management" --title " Clients List" --menu "Choose a hostname to delete from Yasa" 11 60 10 $(for i in $CLIENTHOME/*; do j=${i##*/}; echo "$j ${j%%.*} " | tr -d "\n"; done) 2> $output 
+ 
+	# get response
+	response=$?
+	
+        # if user press cancel, escape 
+	if [ "$response" == "1" -o "$response" == "255" -o -z "$(<$output)" ]
+        then 
+                # remove temp file             
+                [ -f "$output" ] && rm $output
+
+                return 1
+        fi
+
+	# get hostname
+	hostid=$(<$output)
+
+	# check that not in any group
+	host_is_it_member $hostid
+
+	# get response                 
+	response=$?                    
+	
+	if [ "$response" == "0" ]      
+	then                           
+	        groupid=$(host_is_it_member $hostid)
+	        dialog --backtitle "Client Management" --msgbox "$hostid is memeber of \"$groupid\" group\nPlease remove it from group befor change." 7 55   
+	
+	        # remove temp file if exist    
+	        [ -f "$output" ] && rm $output
+	
+	        return 1                       
+	
+	fi   
+
+	# main part of function to call enable/disable function
+	if [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "0" ]
+	then
+		host_disable_yasa $hostid
+		dialog --backtitle "Client Management" --msgbox "USB Restrictions Deactivated" 5 40
+	elif [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "1" ] 
+	then
+		host_enable_yasa $hostid
+		dialog --backtitle "Client Management" --msgbox "USB Restrictions Activated" 5 40
+	fi
+	
+	host_deploy_config $hostid
+
+	# remove temp file if exist    
+	[ -f "$output" ] && rm $output
+	
+	return 0
 }
 
 host_force_update() {
@@ -1638,12 +2074,13 @@ host_mgmt_menu() {
 	        --menu "You can use the UP/DOWN arrow keys, the first \
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 16 65 6 \
-		1 "Add new host" \
-		2 "Delete a host" \
-		3 "Modify a host" \
+	        Choose the TASK" 17 65 7 \
+		1 "Modify a host" \
+		2 "Add new host" \
+		3 "Delete a host" \
 		4 "Enable/Disable Yasa on the client" \
-		5 "Force Deploy Rule" \
+		5 "Show white list" \
+		6 "Force Deploy Rule" \
 	        Exit "Return to Main Menu" 2>"${output}"
 	
 		# get response
@@ -1660,11 +2097,12 @@ host_mgmt_menu() {
 
 	        # make decision
 	        case $(<$output) in
-			1) host_add;;
-			2) host_del;;
-			3) host_modify;;
+			1) host_modify;;
+			2) host_add;;
+			3) host_del;;
 	                4) host_en_dis;;
-			5) force_deploy;;
+			5) whitelist_show host;;
+			6) host_force_update;;
 	                Exit) echo "Bye"; break;;
 	        esac
 	
@@ -1714,7 +2152,7 @@ group_mgmt_menu() {
 			1) group_add;;
 			2) group_del;;
 			3) group_modify;;
-			4) group_show;;
+			4) whitelist_show group;;
 	                Exit) break;;
 	        esac
 	

@@ -1,0 +1,38 @@
+# After change this file only rerun yasa afterwards.
+# In development state yasa dont run config deployment and only make change in server side config. 0: Development stat is off and 1: developmente state is on
+DEVELOP=1
+
+# enable administrative log. 1: enabel, 0: disable
+ADMIN_LOG=1
+
+# Home
+YASAHOME='/etc/yasa'
+
+# Group Home
+GRPHOME='/etc/yasa/group'
+
+# default file
+TEMPHOME='/etc/yasa/skell'
+
+# puppet home (ln -s /etc/yasa/puppet /etc/puppet/modules/yasa)
+PUPPETHOME='/etc/yasa/puppet'
+
+# white list files
+WDEVICE='dev.allow'
+WCLASS='class.allow'
+WDEF='default'
+
+# default policy (class, deauthorized)
+#DEFPOL='default'
+
+# clients home
+# $CLIENTHOME/$fqdn/
+CLIENTHOME='/etc/yasa/puppet/files/hosts'
+
+# udev config filename
+UDEVCONF="10-usblock.rules"
+
+# device log file
+DEVICELOG="/var/log/yasa.log"
+
+
