@@ -1,0 +1,2 @@
+# This task delete role that expire each 15 minutes
+0,30 *	* * * root /sbin/yasa cron

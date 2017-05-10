@@ -1,0 +1,32 @@
+#!/bin/bash
+
+set -e
+
+chmod 755 /etc/yasa/{group,puppet,skell}
+chmod 755 /etc/yasa/skell/{etc,group,temp}
+chmod 755 /etc/yasa/puppet/{files,manifests,templates}
+
+if [ -d /etc/puppet/modules ]
+then
+	if [ -L /etc/puppet/modules/yasa ] 
+	then
+		link=$(readlink /etc/puppet/modules/yasa)
+		if [ "$link" == "/etc/yasa/puppet" ]
+		then
+			echo "Do nothing" > /dev/null
+		else
+			rm /etc/puppet/modules/yasa
+	 		ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+		fi
+	elif [ -e /etc/puppet/modules/yasa ]
+	then
+		rm /etc/puppet/modules/yasa
+	 	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+	else
+		ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+	fi
+else
+	exit 1
+fi
+
+exit 0
