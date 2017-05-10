@@ -75,7 +75,7 @@ check_prerequire_config() {
 log_to_file() {
 	# local variables
 	local msg=$*
-	local date=$(date +"%Y-%M-%d %H:%m:%S.%s%Z")
+	local date=$(date +"%Y-%m-%d %H:%m:%S.%s%Z")
 	local message="$date $msg"
 
 	echo "$message" >> $YASA_ADMIN_LOG
@@ -532,7 +532,7 @@ modify_add_dev() {
 
 
 		# add new device to white list
-		echo -e "# comment $comment \n# ${log_line[1]} ${log_line[2] } \n${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:}\n" >> $home/$id/temp/$WDEVICE
+		echo -e "# comment $comment \n# ${log_line[1]} ${log_line[2] } \n$validtime ${log_line[3]#*:} ${log_line[4]#*:} ${log_line[5]#*:}\n" >> $home/$id/temp/$WDEVICE
 
 		
 		log_main 110 $id - - - The $hostid added successfully
@@ -1251,6 +1251,8 @@ group_add() {
 
 	dialog --backtitle "Group Management" --msgbox "Group added successfully." 5 30
 
+	log_main 200 - $groupid - - The $groupid group added successfully
+
 	# remove temp file
 	[ -f "$output" ] && rm $output
 				
@@ -1370,6 +1372,8 @@ group_del() {
 
 	dialog --msgbox "$groupid removed successfuly" 6 45
 
+	log_main 201 - $groupid - - The $groupid group removed successfully
+
         # remove temp file
         [ -f "$output" ] && rm $output
         [ -f "$oldmemberlist" ] && rm $oldmemberlist
@@ -1402,7 +1406,6 @@ whitelist_show() {
 		backtitle="Group Management"
 	fi
 
-
 	while true
 	do
 		# show list of groups
@@ -1412,9 +1415,10 @@ whitelist_show() {
 		# if no groups
 		if [ "$idsum" == "0" ] 
 		then
-			dialog --backtitle "$backtitle" --title "Modify Group" --msgbox "No Groups" 6 30
+			[ "$type" == "host" ] && dialog --backtitle "$backtitle" --title "$backtitle" --msgbox "No hosts" 6 30
+			[ "$type" == "group" ] && dialog --backtitle "$backtitle" --title "$backtitle" --msgbox "No Groups" 6 30
 
-			return 1
+			return 0
 		fi
 
 	        # choose group to modify
@@ -1985,6 +1989,8 @@ host_del() {
 
         dialog --backtitle "Client Management" --msgbox "The host deleted successfuly." 5 40
 
+	log_main 101 $hostid - - - The $hostid deleted successfully
+
 	# remove temp file
 	[ -f "$output" ] && rm $output
 	
@@ -2131,10 +2137,14 @@ host_en_dis() {
 	then
 		host_disable_yasa $hostid
 		dialog --backtitle "Client Management" --msgbox "USB Restrictions Deactivated" 5 40
+
+		log_main 103 $hostid - - - The $hostid disabled.
+
 	elif [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "1" ] 
 	then
 		host_enable_yasa $hostid
 		dialog --backtitle "Client Management" --msgbox "USB Restrictions Activated" 5 40
+		log_main 102 $hostid - - - The $hostid enabled.
 	fi
 	
 	host_deploy_config $hostid
