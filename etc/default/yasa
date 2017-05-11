@@ -12,33 +12,34 @@ YASA_ADMIN_LOG="/var/log/yasa-admin.log"
 DEVICELOG="/var/log/yasa.log"
 
 # Home
-YASAHOME='/etc/yasa'
+YASAHOME="/etc/yasa"
 
 # Group Home
-GRPHOME='/etc/yasa/group'
+GRPHOME="/etc/yasa/group"
 
 # default file
-TEMPHOME='/etc/yasa/skell'
+TEMPHOME="/etc/yasa/skell"
 
 # puppet home (ln -s /etc/yasa/puppet /etc/puppet/modules/yasa)
-PUPPETHOME='/etc/yasa/puppet'
+PUPPETHOME="/etc/yasa/puppet"
 
 # white list files
-WDEVICE='dev.allow'
-WCLASS='class.allow'
+WDEVICE="dev.allow"
+WCLASS="class.allow"
 
 # default behavior. 0: disable , 1: enable
-WDEF='default'
+WDEF="default"
 
 # default policy (class, deauthorized)
-#DEFPOL='default'
+#DEFPOL="default"
 
 # clients home
 # $CLIENTHOME/$fqdn/
-CLIENTHOME='/etc/yasa/puppet/files/hosts'
+CLIENTHOME="/etc/yasa/puppet/files/hosts"
 
 # udev config filename
 UDEVCONF="10-usblock.rules"
 
-
-
+# Server name or ip address. Use Full qualified hostname is better.
+# This is address of log server and server which install yasa main script
+SERVER_NAME="srv.cvak.local"

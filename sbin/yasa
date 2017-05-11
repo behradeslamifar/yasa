@@ -639,7 +639,7 @@ modify_del_dev() {
 		dialog --backtitle "$backtitle" --msgbox "Device deleted from whitelist" 5 35
 
 		# create udev rule file
-		host_write_rule $id
+		[ "$type" == "host" ] && host_write_rule $id
 	fi
 
 	# remove temp file
@@ -855,6 +855,7 @@ group_modify_rule() {
 
         # count number of host
         local groupsum=$(ls $GRPHOME | wc -l)
+	
 
 	if [ -z "$1" ]
 	then
@@ -883,7 +884,7 @@ group_modify_rule() {
 			# remove temp file
 			[ -f "$output" ] && rm $output
 			
-			return 1
+			return 0
 		fi
 	
 	   fi
@@ -903,17 +904,44 @@ group_modify_rule() {
 	   # Modify device whitelist
 	   while true
 	   do
-	   	# modify device that allow in group
-	   	modify_add_dev group $groupid
-
-	   	# if press cancel remove group folder
-	   	response=$?
-
-	   	if [ "$response" == "1" ]
+	   	if [ "$interactive" == "1" ]
 	   	then
-	   		break
+	   	     # choose add or delete device
+	   	     dialog --backtitle "Group Management" --title "[ G R O U P - M O D I F Y ]" \
+	   	     --menu "Choose what you want to do.\n\
+	   	     Press cancel to exit from this menu." 12 60 3 \
+	   	     1 "Add Device" \
+	   	     2 "Delete Device" 2>"${output}"
+	
+	   	     # get response
+	   	     response=$?
+
+	   	     # if user enter cancel or press esc
+	   	     if [ "$response" == "1" -o "$response" == "255" ]
+	   	     then
+	   	             # remove temp file
+	   	             [ -f "$output" ] && rm $output
+
+	   	     	return 0
+	   	     fi
+
+	   	     # make decision
+	   	     case $(<$output) in
+	   	     	1) modify_add_dev group $groupid;;
+	   	     	2) modify_del_dev group $groupid;;
+	   	     esac
+
+	   		# if press cancel remove group folder
+	   		response=$?
+
+	   		if [ "$response" == "1" ]
+	   		then
+	   			break
+	   		fi
+		else
+			modify_add_dev group $groupid
 	   	fi
-		
+	
 		# add another device
 		dialog --backtitle "Group Management" --title " Another Device " --yesno "Do you add another device to whitelist?" 6 50
 		
@@ -971,7 +999,7 @@ group_find_member() {
 	return 0
 }
 
-group_modify_member() {
+group_modify_members() {
 	# temp file for menu output
 	local output=$(mktemp /tmp/usb.XXXXXXX)
 	local oldmemberlist=$(mktemp /tmp/usb.XXXXXXX)
@@ -1101,6 +1129,7 @@ group_modify_member() {
             host_deploy_config $hostid silent >> $failedhost                                                                                 
         done
 
+	return 0
 }
 
 group_modify() {
@@ -1126,49 +1155,49 @@ group_modify() {
 		return 1
 	fi
 
-        # choose group to modify
-        dialog --backtitle "Group Management" --title "Group List" --menu "Choose one group to modify" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $output
+        ## choose group to modify
+        #dialog --backtitle "Group Management" --title "Group List" --menu "Choose one group to modify" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $output
 
-	# get response
-	response=$?
+	## get response
+	#response=$?
 
-	# save dialog output in variable
-	groupid=$(<$output)
-	
-	# if user cancel the dialog or press escape 
-	if [ "$response" == "1" -o "$response" == "255" ]
-	then 
-		# remove temp file
-		[ -f "$output" ] && rm $output
-		
-		return 1
-	fi
+	## save dialog output in variable
+	#groupid=$(<$output)
+	#
+	## if user cancel the dialog or press escape 
+	#if [ "$response" == "1" -o "$response" == "255" ]
+	#then 
+	#	# remove temp file
+	#	[ -f "$output" ] && rm $output
+	#	
+	#	return 1
+	#fi
 	
 	# modify group
-	group_modify_rule $groupid
+	group_modify_rule 
 
 	# if press cancel remove group folder
 	response=$?
 
-	if [ "$response" == "1" ]
-	then
-		rm -r $GRPHOME/$groupid
-		[ -f "$output" ] && rm $output
-		return 1
-	fi
+	#if [ "$response" == "1" ]
+	#then
+	#	[ ! -z "$groupid" ] && rm -r $GRPHOME/$groupid
+	#	[ -f "$output" ] && rm $output
+	#	return 1
+	#fi
 
-	# modify member
-	group_modify_member $groupid
+	## modify member
+	#group_modify_members $groupid
 
-	# if press cancel remove group folder
-	response=$?
+	## if press cancel remove group folder
+	#response=$?
 
-	if [ "$response" == "1" ]
-	then
-		rm -r $GRPHOME/$groupid
-		[ -f "$output" ] && rm $output
-		return 1
-	fi
+	#if [ "$response" == "1" ]
+	#then
+	#	rm -r $GRPHOME/$groupid
+	#	[ -f "$output" ] && rm $output
+	#	return 1
+	#fi
 
 	# remove temp file
 	[ -f "$output" ] && rm $output
@@ -1236,7 +1265,7 @@ group_add() {
 	fi
 
 	# modify member
-	group_modify_member $groupid
+	group_modify_members $groupid
 
 	# if press cancel remove group folder
 	response=$?
@@ -1395,6 +1424,7 @@ whitelist_show() {
 	local response
 	local idsum
 	local backtitle
+	local groupid
 
 	# set home
 	if [ "$type" == "host" ]
@@ -1421,7 +1451,7 @@ whitelist_show() {
 			return 0
 		fi
 
-	        # choose group to modify
+	        # choose host or group to show
 	        dialog --backtitle "$backtitle" --title "List" --menu "Choose one options. Press cancel to exit and Esc to start again" 10 60 $idsum $(for i in $(ls $home/); do echo "$i $i " | tr -d "\n"; done) 2> $output
 	
 		# get response
@@ -1439,6 +1469,27 @@ whitelist_show() {
 		elif [ "$response" == "255" ] 
 		then 
 			continue
+		fi
+
+		if [ "$type" == "host" ]
+		then
+			# check that not in any group
+			host_is_it_member $id
+
+			# get response                 
+			response=$?                    
+			
+			if [ "$response" == "0" ]      
+			then                           
+			        groupid=$(host_is_it_member $id)
+			        dialog --backtitle "Client Management" --msgbox "$id is memeber of \"$groupid\" group\nPlease modify group for make change in whitelist" 7 55   
+			
+			        # remove temp file if exist    
+			        [ -f "$output" ] && rm $output
+			
+			        return 1                       
+			
+			fi 
 		fi
 
 		# show member in text box
@@ -2295,8 +2346,9 @@ group_mgmt_menu() {
 	        Choose the TASK" 16 65 6 \
 		1 "Add new group" \
 		2 "Delete a group" \
-		3 "Modify group" \
-		4 "Show group (show member and rules)" \
+		3 "Modify group members" \
+		4 "Modify group rules" \
+		5 "Show group (show members and rules)" \
 	        Exit "Return to Main Menu" 2>"${output}"
 	
 		# get response
@@ -2315,8 +2367,9 @@ group_mgmt_menu() {
 	        case $(<$output) in
 			1) group_add;;
 			2) group_del;;
-			3) group_modify;;
-			4) whitelist_show group;;
+			3) group_modify_members;;
+			4) group_modify;;
+			5) whitelist_show group;;
 	                Exit) break;;
 	        esac
 	
@@ -2346,7 +2399,7 @@ report_menu() {
 		1 "Add/Delete Clients" \
 		2 "Add/Delete Groups" \
 		3 "Failed Hosts" \
-		4 "Disabled Hosts"
+		4 "Disabled Hosts" \
 	        Exit "Return to Main Menu" 2>"${output}"
 	
 		# get response
@@ -2452,7 +2505,7 @@ yasa_cron() {
 					scomment=$line
 				elif [ ! -z "$(echo $line | grep "^[0-9]" )" ]
 				then
-					if [ ! -z "$(echo $line  | awk '($1 > value ) ' value=$currenttime)" ]
+					if [ ! -z "$(echo $line  | awk '($1 > value ) ' value=$currenttime)" -o "$(echo $line | awk awk '{ print ( $1 ) }')" == "0" ]
 					then
 						echo -e "$ucomment\n$scomment\n$line" >> $TEMP
 					fi
@@ -2469,7 +2522,7 @@ yasa_cron() {
 		host_write_rule $hostid
 
 		# deploy rule for each host
-		[ "$develop" != 1 ] && puppet kick $hostid
+		host_deploy_config $hostid
 	done
 
 	# remove class based on expire time
