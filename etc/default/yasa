@@ -1,5 +1,6 @@
 # After change this file only rerun yasa afterwards.
-# In development state yasa dont run config deployment and only make change in server side config. 0: Development stat is off and 1: developmente state is on
+# In development state yasa dont run config deployment and only make change in server side config. 
+# 0: Development stat is off and 1: developmente state is on
 DEVELOP=0
 
 # enable administrative log. 1: enabel, 0: disable
@@ -38,7 +39,7 @@ WDEF="default"
 CLIENTHOME="/etc/yasa/puppet/files/hosts"
 
 # udev config filename
-UDEVCONF="10-usblock.rules"
+UDEVCONF="10-yasa.rules"
 
 # Server name or ip address. Use Full qualified hostname is better.
 # This is address of log server and server which install yasa main script

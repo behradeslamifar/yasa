@@ -27,19 +27,19 @@ class yasa
     require => Package['rsyslog'],
   }
   
-  file { '/etc/udev/rules.d/10-usblock.rules':
+  file { '/etc/udev/rules.d/10-yasa.rules':
     ensure => present,
     owner  => 'root',
     group  => 'root',
     mode   => '0440',
-    source => "puppet:///modules/yasa/hosts/$::fqdn/etc/10-usblock.rules",
+    source => "puppet:///modules/yasa/hosts/$::fqdn/etc/10-yasa.rules",
     audit  =>  'content',
     notify => Exec['puppet_trigger_udev'],
   }
 
   exec { 'puppet_trigger_udev':
     command     => "/sbin/udevadm control --reload; /sbin/udevadm trigger -c add -t devices -s usb",
-    subscribe   => File['/etc/udev/rules.d/10-usblock.rules'],
+    subscribe   => File['/etc/udev/rules.d/10-yasa.rules'],
     #refreshonly => true,
   }
 

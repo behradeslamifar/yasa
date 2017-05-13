@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# This script is based on IOI organization request for control on USB connections 
+# and devices. 
+# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
+# This is properitary software and cant freely distributed.
+# Version number (may use later)
+version=0.5
+
+# Disable ctrl+c in program
+trap "" SIGINT
+
+yasa_auth() {
+        local name=/sys$1     
+        local value=$2        
+        echo "$value" > "${name%/*}/authorized" 2>> /dev/null
+        echo "${name%/*}/authorized" >> /var/log/yasa-auth.log
+        return 0
+}
+
+if [ ! -z "$1" ]
+then
+        if [ "$1" = "auth" ]
+        then
+                yasa_auth $2 $3
+        fi
+fi
+
+exit 0
+

@@ -1867,6 +1867,50 @@ host_sign() {
 	return 0
 }
 
+host_sign_main() {
+	# local variables
+	local output=$(mktemp /tmp/usb.XXXXXXX)
+	local hostid
+	
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+
+	# collect client requests
+	puppet cert list | tr -s ' ' | sed 's/^\(+ \| \)\"/\"/' | cut -f 1 -d " " | tr -d '"' > $output
+
+	if [ -z "$(<$output)" ]
+	then
+		dialog --backtitle "Client Management" --msgbox "There isnt any request to sign." 5 60
+	
+		# remove temp file
+		[ -f "$output" ] && rm $output
+
+		return 0
+	fi
+
+	dialog  --backtitle "Client Management" --title "Clients Reqests List" --menu "Choose one to sign the client" 0 80 5 $(for i in $(<$output); do echo $i ${i%%.*}; done) 2> $output
+
+	# get response
+	response=$?
+
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then 
+		# remove temp 	    	[ -f "$output" ] && rm $output
+		[ -f "$output" ] && rm $output
+		
+		return 1
+	fi
+	
+	hostid=$(<$output)
+
+	host_sign $hostid
+	
+	# remove temp file
+	[ -f "$output" ] && rm $output
+
+	return 0
+}
 
 host_add() {
 	# local variables
@@ -2272,6 +2316,112 @@ host_force_update() {
 
 }
 
+report_add_remove_hosts() {
+	# temp file for dialog output
+	local output=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+
+	# filter logs
+	cat $YASA_ADMIN_LOG | awk '($3 == 100) || ($3 == 101 ) || ($3 == 102 ) || ($3 == 103 )' | tail -100 > $output
+	# local variable
+	dialog --backtitle "Client Management" --title "R E P O R T - C L I E N T S" --textbox $output 14 75
+
+	# remove temp file if exist    
+	[ -f "$output" ] && rm $output
+
+	return 0
+}
+
+report_add_remove_groups() {
+	# temp file for dialog output
+	local output=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+
+	# filter logs
+	cat $YASA_ADMIN_LOG | awk '($3 == 200) || ($3 == 201 )' | tail -100 > $output
+	# local variable
+	dialog --backtitle "Client Management" --title "R E P O R T - G R O U P S" --textbox $output 14 75
+
+	# remove temp file if exist    
+	[ -f "$output" ] && rm $output
+
+	return 0
+}
+
+report_deploy_config() {
+	# temp file for dialog output
+	local output=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+
+	# filter logs
+	cat $YASA_ADMIN_LOG | awk '($3 == 104) || ($3 == 105 ) || ($3 == 106 ) || ($3 == 107 )' | tail -100 > $output
+	# local variable
+	dialog --backtitle "Client Management" --title "R E P O R T - D E P L O Y M E N T S" --textbox $output 14 75
+
+	# remove temp file if exist    
+	[ -f "$output" ] && rm $output
+
+	return 0
+}
+
+
+report_custom_search() {
+	# temp file for dialog output
+	local output=$(mktemp /tmp/usb.XXXXXXX)
+
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+
+	# search based on ip address
+	dialog --backtitle "$backtitle" --inputbox "Please search the keywork to filter logs" 8 80 2> $output
+
+	# save dialog state (find if user press cancel)
+	response=$?
+
+	# save input variable
+	keyword=$(<$output)
+
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then
+		[ -f "$output" ] && rm $output
+	
+		return 1
+	fi
+
+	# normalize log file
+	cat $YASA_ADMIN_LOG | grep -i "$keyword" | tail -100  > "$output"
+
+	if [ -z "$(<$output)" ]
+	then
+	    echo "Failed! Try another keyword" > $output
+	fi
+
+	dialog --backtitle "Client Management" --title "R E P O R T - C U S T O M S E A R C H" --textbox $output 14 75
+
+	# remove temp file if exist    
+	[ -f "$output" ] && rm $output
+
+	return 0
+}
+
+server_preparation() {
+	# local variables	
+	local output=$(mktemp /tmp/usb.XXXXXXXX)
+
+	server_sync_host_puppet
+
+	server_all_host_sign
+
+	
+}
+
 host_mgmt_menu() {
 	# Menu input
 	local output=$(mktemp /tmp/usb.XXXXXXXX)
@@ -2289,13 +2439,14 @@ host_mgmt_menu() {
 	        --menu "You can use the UP/DOWN arrow keys, the first \
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 17 65 7 \
+	        Choose the TASK" 18 65 8 \
 		1 "Modify a host" \
 		2 "Add new host" \
 		3 "Delete a host" \
 		4 "Enable/Disable Yasa on the client" \
 		5 "Show white list" \
 		6 "Force Deploy Rule" \
+		7 "Sign Ready Clients" \
 	        Exit "Return to Main Menu" 2>"${output}"
 	
 		# get response
@@ -2318,6 +2469,7 @@ host_mgmt_menu() {
 	                4) host_en_dis;;
 			5) whitelist_show host;;
 			6) host_force_update;;
+			7) host_sign_main;;
 	                Exit) echo "Bye"; break;;
 	        esac
 	
@@ -2396,10 +2548,10 @@ report_menu() {
 	        letter of the choice as a hot key, or the \
 	        number keys 1-9 to choose an option.\
 	        Choose the TASK" 16 65 6 \
-		1 "Add/Delete Clients" \
-		2 "Add/Delete Groups" \
-		3 "Failed Hosts" \
-		4 "Disabled Hosts" \
+		1 "Add/Remove Clients" \
+		2 "Add/Remove Groups" \
+		3 "Deploying Rules" \
+		4 "Report based on custom search" \
 	        Exit "Return to Main Menu" 2>"${output}"
 	
 		# get response
@@ -2416,8 +2568,10 @@ report_menu() {
 	
 	        # make decision
 	        case $(<$output) in
-			1) report_active;;
-			2) report_deactive;;
+			1) report_add_remove_hosts;;
+			2) report_add_remove_groups;;
+			3) report_deploy_config;;
+			4) report_custom_search;;
 	                Exit) break;;
 	        esac
 	
@@ -2446,8 +2600,6 @@ yasa_advanced_menu() {
 	        Choose the TASK" 16 65 9 \
 		1 "Intall new client wizard" \
 		2 "Prepare server installation" \
-		3 "Signing Client Request" \
-		4 "Accept Ready Client" \
 	        Exit "Return to Main Menu" 2>"${output}"
 	
 		# get response
@@ -2465,9 +2617,7 @@ yasa_advanced_menu() {
 	        # make decision
 	        case $(<$output) in
 			1) install_client_wizard;;
-			2) yasa_paration;;
-			3) force_client_update;;
-			4) accept_ready_client;;
+			2) yasa_preparation;;
 	                Exit) break;;
 	        esac
 	
