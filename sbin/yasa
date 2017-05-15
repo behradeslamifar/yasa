@@ -911,7 +911,8 @@ group_modify_rule() {
 	   	     --menu "Choose what you want to do.\n\
 	   	     Press cancel to exit from this menu." 12 60 3 \
 	   	     1 "Add Device" \
-	   	     2 "Delete Device" 2>"${output}"
+	   	     2 "Delete Device" \
+	   	     3 "Dont Add Device" 2>"${output}"
 	
 	   	     # get response
 	   	     response=$?
@@ -929,6 +930,7 @@ group_modify_rule() {
 	   	     case $(<$output) in
 	   	     	1) modify_add_dev group $groupid;;
 	   	     	2) modify_del_dev group $groupid;;
+			3) echo "Do nothing" > /dev/null ;;
 	   	     esac
 
 	   		# if press cancel remove group folder

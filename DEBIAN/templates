@@ -1,0 +1,9 @@
+Template: yasa/hostname
+Type: string
+Default: yasa.server
+Description: Enter Hostname:
+ Please enter this server hostname. This name use to configure all
+ part of yasa to comunicate the client. 
+ .
+ If you choose incorrect one, you can change it after installation 
+ by running "dpkg-reconfigure yasa"
