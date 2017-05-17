@@ -44,3 +44,6 @@ UDEVCONF="10-yasa.rules"
 # Server name or ip address. Use Full qualified hostname is better.
 # This is address of log server and server which install yasa main script
 SERVER_NAME="srv.cvak.local"
+
+# Directory that ssh keys create in
+KEYSDIR="/etc/yasa/keys"

@@ -2413,6 +2413,93 @@ report_custom_search() {
 	return 0
 }
 
+deploy_yasaclient() {
+	# local variables
+	local output=$(mktemp /tmp/usb.XXXXXXX)
+	local hostid
+	local __hostid
+	local __hostidvar=$1
+	local response
+	local package_name
+
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+
+
+	# check ssh key exist in KEYSDIR
+	if [ ! -f "$KEYSDIR/server" -a ! -f "$KEYSDIR/server.pub" ]
+	then
+		dialog --backtitle "Install Wizard" --title "Error Message" --msgbox "SSH keys doesnt exist. Please create and deploy keys from main menu." 6 60
+
+		# remove temp file
+		[ -f "$output" ] && rm $output
+		
+		return 1
+	fi
+
+	# get hostname from admin
+	dialog --backtitle "Install Wizard" --title "I N P U T B O X" --inputbox "Please enter valid hostname." 8 70 2>"$output"
+
+	# get reponse
+	response=$?
+
+	# get hostid
+	hostid=$(<$output)
+
+	# if user cancel the dialog or press escape 
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then 
+		# remove temp file
+		[ -f "$output" ] && rm $output
+		
+		return 1
+	fi
+	
+	# hostid validation
+	if [ -z "$(echo "$hostid" | egrep "^(([a-zA-Z]{1})|([a-zA-Z]{1}[a-zA-Z]{1})|([a-zA-Z]{1}[0-9]{1})|([0-9]{1}[a-zA-Z]{1})|([a-zA-Z0-9][a-zA-Z0-9_-]{1,61}[a-zA-Z0-9]))\.([a-zA-Z]{2,6}|[a-zA-Z0-9-]{2,30}\.[a-zA-Z]{2,})$")" ] 
+	then
+		dialog --backtitle "Install Wizard" --title "Error Message" --msgbox "Entered hostname is invalid, please use valid format" 6 60
+		
+		# remove temp file if exist    
+		[ -f "$output" ] && rm $output
+
+		return 1
+	fi
+
+	# check hostname is reachable
+	ping -c 1 $hostid > /dev/null 2>&1
+
+	# get response
+	response=$?
+
+	if [ "$response" !=0 ]
+	then
+		dialog --backtitle "Install Wizard" --title "Error Message" --msgbox "Client not accessable please check your network connectivity and try again." 6 60
+
+		# remove temp file
+		[ -f "$output" ] && rm $output
+		
+		return 1
+	fi
+
+	# copy yasaclient from /usr/share/lib/yasa. befor it, find package name
+	package_name=$(ls /usr/share/lib/yasaclient*)
+	package_name=${package_name##*/}
+
+	scp /usr/share/lib/yasa/$package_name root@$hostid:/tmp/
+ 
+	# set yasaclient answer on client
+	ssh root@$hostid "echo "yasaclient yasaclient/hostname string $hostid" | debconf-set-selections" ; echo "yasaclient yasaclient/server_name string $server_name" | debconf-set-selections
+
+	# dpkg -i yasaclient with all dependencies or done with apt-get
+	ssh root@$hostid "dpkg -i /tmp/$package_name"
+	
+	# remove temp file if exist    
+	[ -f "$output" ] && rm $output
+
+	return 0
+}
+
 server_preparation() {
 	# local variables	
 	local output=$(mktemp /tmp/usb.XXXXXXXX)
@@ -2618,7 +2705,7 @@ yasa_advanced_menu() {
 
 	        # make decision
 	        case $(<$output) in
-			1) install_client_wizard;;
+			1) deploy_yasaclient;;
 			2) yasa_preparation;;
 	                Exit) break;;
 	        esac
