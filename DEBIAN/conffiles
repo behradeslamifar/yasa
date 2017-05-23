@@ -1,3 +1,1 @@
 /etc/default/yasa
-/etc/logrotate.d/yasa
-/etc/cron.d/yasa

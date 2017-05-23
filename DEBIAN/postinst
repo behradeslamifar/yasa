@@ -8,25 +8,36 @@ chmod 755 /etc/yasa/puppet/{files,manifests,templates}
 
 if [ -d /etc/puppet/modules ]
 then
-	if [ -L /etc/puppet/modules/yasa ] 
-	then
-		link=$(readlink /etc/puppet/modules/yasa)
-		if [ "$link" == "/etc/yasa/puppet" ]
-		then
-			echo "Do nothing" > /dev/null
-		else
-			rm /etc/puppet/modules/yasa
-	 		ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
-		fi
-	elif [ -e /etc/puppet/modules/yasa ]
-	then
-		rm /etc/puppet/modules/yasa
-	 	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
-	else
-		ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
-	fi
+    if [ -L /etc/puppet/modules/yasa ] 
+    then
+    	link=$(readlink /etc/puppet/modules/yasa)
+    	if [ "$link" == "/etc/yasa/puppet" ]
+    	then
+    		echo "Do nothing" > /dev/null
+    	else
+    		rm /etc/puppet/modules/yasa
+     		ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    	fi
+    elif [ -e /etc/puppet/modules/yasa ]
+    then
+    	rm /etc/puppet/modules/yasa
+     	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    else
+    	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    fi
 else
-	exit 1
+    exit 1
+fi
+
+# genrate ssh key for yasaclient deployment
+if [ ! -f "/etc/yasa/keys/server" -a ! -f "/etc/yasa/keys/server.pub" ]
+then
+    echo "Generating SSH keys ..."
+    echo "..."
+    ssh-keygen -f /etc/yasa/keys/server -N '' > /dev/null 2>&1
+    echo "SSH keys generated successfuly ..."
+else
+    echo "Key(s) exist. if you want create new keys, try from Yasa Management and Utility Menu"
 fi
 
 exit 0

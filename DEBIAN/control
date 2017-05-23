@@ -1,8 +1,8 @@
 Package: yasa
-Version: 0.6
+Version: 0.7
 Architecture: all
 Maintainer: Behrad Eslamifar <b.eslamifar@cvak.ir>
-Depends: debconf, libssl1.0.0, puppetmaster, sed, dialog, coreutils
+Depends: debconf, libssl1.0.0, puppetmaster, sed, dialog, coreutils, openssh-client
 Section: misc
 Priority: optional
 Description: Yasa is usb management utility for restriction access to usb port.

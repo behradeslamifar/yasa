@@ -5,13 +5,84 @@
 # Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
 # This is properitary software and cant freely distributed.
 # Version number (may use later)
-version=0.5
+version=0.7
+client_version=0.4
+yasarepo_date="2017-05-21"
 
 # Disable ctrl+c in program
 trap "" SIGINT
 
 # Load default configuration
 source /etc/default/yasa
+
+host_add_generate_puppet_config() {
+    ## generate new site.pp for puppet configuration and reload puppet
+    # local variables
+    local tempdir=/etc/yasa/temp/puppet
+    local puppetconf=/etc/puppet/manifests/site.pp
+    local response
+
+    cat $tempdir/* > $puppetconf
+
+    if [ -x "/bin/systemctl" ]
+    then
+	systemctl restart puppetmaster
+
+	# get exit status
+	response=$?
+
+	if [ "$response" != "0" ]
+	then
+	    dialog --backtitle "Host Management" --title "Generate Config" --msgbox "Puppet reconfiguration failed. Please check puppet site.pp manually" 6 70
+
+	    return 1
+	fi
+    else
+	service puppetmaster restart
+
+	# get exit status
+	response=$?
+
+	if [ "$reponse" != "0" ]
+	then
+	    dialog --backtitle "Host Management" --title "Generate Config" --msgbox "Puppet reconfiguration failed. Please check puppet manually" 6 70
+
+	    return 1
+	fi
+
+    fi
+
+    return 0
+}
+
+host_add_puppet() {
+    ## add client to puppet config to generate new config
+    # local variables
+    local response
+    local hostid=$1
+    local tempfile=/etc/yasa/temp/puppet/10-hosts
+
+    if [ -z "$hostid" ]
+    then
+	dialog --backtitle "Host Management" --title "Generate Config" --msgbox "Hostname variable is empty. Please report to developer" 6 70
+
+	return 1
+    fi
+
+    if [ ! -z "$(grep "'$hostid'" $tempfile)" ]
+    then
+	echo "This host exist in config" > /dev/null
+
+	return 0
+    fi
+
+    echo "    '$hostid'," >> $tempfile
+
+    # generate site.pp
+    host_add_generate_puppet_config
+
+    return 0
+}
 
 check_prerequire_config() {
 	## This function check default need to run corrctly yasa
@@ -215,7 +286,7 @@ host_deploy_config() {
 		
 		if [ "$result" != "0" ]
 		then
-			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 65	
+			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 70 
 
 			log_main 106 $hostid - - - Deployment failed.
 			
@@ -1982,12 +2053,15 @@ host_add() {
 		fi
 
 		# prepare host config
-		echo 70 | dialog --backtitle "Client Management" --gauge "Create default config ..." 7 70 0
+		echo 50 | dialog --backtitle "Client Management" --gauge "Create default config ..." 7 70 0
 	    	mkdir -p $CLIENTHOME/$hostid 
 	    	cp -ar /etc/yasa/skell/{etc,temp} $CLIENTHOME/$hostid
 		host_write_rule $hostid
 		
-		echo 30 | dialog --backtitle "Client Management" --gauge "Deploy config to client ..." 7 70 0
+		echo 70 | dialog --backtitle "Client Management" --gauge "Add client to puppet site.pp ..." 7 70 0
+		host_add_puppet $hostid
+
+		echo 80 | dialog --backtitle "Client Management" --gauge "Deploy config to client ..." 7 70 0
 		[ "$sign_resonse" != "1" ] && host_deploy_config $hostid 
 		break
 	    fi
@@ -2417,10 +2491,13 @@ deploy_yasaclient() {
 	# local variables
 	local output=$(mktemp /tmp/usb.XXXXXXX)
 	local hostid
-	local __hostid
-	local __hostidvar=$1
 	local response
 	local package_name
+	local distro
+	local server_name=$(hostname -f)
+	local sshport
+	local sshcmd
+	local scpcmd
 
 	# trap and delete temp file
 	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
@@ -2472,7 +2549,7 @@ deploy_yasaclient() {
 	# get response
 	response=$?
 
-	if [ "$response" !=0 ]
+	if [ "$response" != "0" ]
 	then
 		dialog --backtitle "Install Wizard" --title "Error Message" --msgbox "Client not accessable please check your network connectivity and try again." 6 60
 
@@ -2482,17 +2559,57 @@ deploy_yasaclient() {
 		return 1
 	fi
 
+	# ssh port number
+	dialog --backtitle "Install Wizard" --title " SSH Port " --inputbox "Enter SSH port number on client" 6 70 22 2>$output
+
+	sshport=$(<$output)
+
 	# copy yasaclient from /usr/share/lib/yasa. befor it, find package name
-	package_name=$(ls /usr/share/lib/yasaclient*)
+	package_name=$(ls /usr/share/lib/yasa/yasaclient*)
 	package_name=${package_name##*/}
 
-	scp /usr/share/lib/yasa/$package_name root@$hostid:/tmp/
+	# choose linux distribution for install dependencies
+	dialog --backtitle "Install Wizard" --title " Choose Distros " --menu "Plaes linux distributin that install on client target." 11 60 11 \
+	"Jessie" "Debian 8.7" \
+	"Xenial" "Ubuntu 16.04 LTS" \
+	"Trusy" "Ubuntu 14.04 LTS" 2> $output
+	
+	# get response
+	response=$?
+
+	# if user enter cancel or press esc
+	if [ "$response" == "1" -o "$response" == "255" ]
+	then
+	        # remove temp file
+	        [ -f "$output" ] && rm $output
+
+		return 1
+	fi
+
+	distro=$(<$output)
+	distro=${distro,,}
+
+	if [ -z "$sshport" ]
+	then
+	    sshcmd="ssh -oStrictHostKeyChecking=no -i $KEYSDIR/server"
+	    scpcmd="scp -oStrictHostKeyChecking=no -i $KEYSDIR/server"
+	else
+	    sshcmd="ssh -p $sshport -oStrictHostKeyChecking=no -i $KEYSDIR/server"
+	    scpcmd="scp -P $sshport -oStrictHostKeyChecking=no -i $KEYSDIR/server"
+	fi
+
+	# copy packages based on distribution
+	$scpcmd -r /usr/share/lib/yasa/$distro root@$hostid:/tmp/debs
+	$scpcmd /usr/share/lib/yasa/$package_name root@$hostid:/tmp/
  
-	# set yasaclient answer on client
-	ssh root@$hostid "echo "yasaclient yasaclient/hostname string $hostid" | debconf-set-selections" ; echo "yasaclient yasaclient/server_name string $server_name" | debconf-set-selections
 
 	# dpkg -i yasaclient with all dependencies or done with apt-get
-	ssh root@$hostid "dpkg -i /tmp/$package_name"
+	$sshcmd root@$hostid "DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/debs/*.deb"
+
+	# set yasaclient answer on client
+	$sshcmd root@$hostid "echo \"yasaclient yasaclient/hostname string $hostid\" | debconf-set-selections ; echo \"yasaclient yasaclient/server_name string $server_name\" | debconf-set-selections"
+
+	$sshcmd root@$hostid "dpkg -i /tmp/$package_name"
 	
 	# remove temp file if exist    
 	[ -f "$output" ] && rm $output
@@ -2500,15 +2617,70 @@ deploy_yasaclient() {
 	return 0
 }
 
+yasa_rsyslog_config() {
+    ## add rsyslog config and restart it to readey for yasa
+    # local variables
+
+
+    
+    return 0    
+}
+
 server_preparation() {
 	# local variables	
 	local output=$(mktemp /tmp/usb.XXXXXXXX)
 
+	# check dependencies
+
+	# check site.pp config
+
+	# rsyslog config for yasa
 	server_sync_host_puppet
 
 	server_all_host_sign
 
 	
+}
+
+generate_new_ssh_keys() {
+    # local variables
+    local response
+
+    # check if previus key exist
+    if [ -f "/etc/yasa/keys/server" -o -f "/etc/yasa/keys/server.pub" ]
+    then
+        dialog --backtitle "Generate SSH Keys"  --title " Keys Exists " --yesno "SSH keys exists. Are you sure delete old keys and create new one?" 6 50
+        
+        # get response
+        response=$?
+        
+        # if user press cancel or escape
+        if [ "$response" == "1" -o "$response" == "255" ]
+        then
+            # remove temp file
+            [ -f "$output" ] && rm $output
+
+            return 1
+	else
+	    rm -r /etc/yasa/keys/server*	 
+        fi
+    fi
+
+    # generate new keys
+    ssh-keygen -f /etc/yasa/keys/server -N ''
+
+    # find successfull creation
+    response=$?
+
+    if [ "$response" == "0" ]
+    then
+	dialog --backtitle "Generate SSH Keys"  --title " Successfull " --msgbox "SSH keys generated successfuly. You can find it in \"/etc/yasa/keys\"." 6 65
+    else
+	dialog --backtitle "Generate SSH Keys"  --title " Failed " --msgbox "SSH keys generation faild. Find the error and retry again." 6 65
+	return 1
+    fi
+
+    return 0
 }
 
 host_mgmt_menu() {
@@ -2669,6 +2841,13 @@ report_menu() {
 	return 0
 }
 
+about_yasa() {
+	# local variables
+	dialog --backtitle "Yasa Management and Utility" --title "About Yasa" --msgbox "Yasa is project to control and monitor USB devices \nYasa version $version \nYasaclient version $client_version \nYasa repository updating data  $yasarepo_date " 10 80
+
+	return 0
+}
+
 yasa_advanced_menu() {
 	# Menu input
 	local output=$(mktemp /tmp/usb.XXXXXXXX)
@@ -2689,6 +2868,8 @@ yasa_advanced_menu() {
 	        Choose the TASK" 16 65 9 \
 		1 "Intall new client wizard" \
 		2 "Prepare server installation" \
+		3 "Generate New SSH keys" \
+		4 "About" \
 	        Exit "Return to Main Menu" 2>"${output}"
 	
 		# get response
@@ -2707,6 +2888,8 @@ yasa_advanced_menu() {
 	        case $(<$output) in
 			1) deploy_yasaclient;;
 			2) yasa_preparation;;
+			3) generate_new_ssh_keys;;
+			4) about_yasa;;
 	                Exit) break;;
 	        esac
 	
