@@ -12,20 +12,20 @@ class yasa
     source  => "puppet:///modules/yasa/yasa",
   }
  
-  file { '/etc/rsyslog.d/usblock.conf':
-    notify  => Service['rsyslog'],
-    ensure  => present,
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0440',
-    source  => "puppet:///modules/yasa/hosts/$::fqdn/etc/yasalog.conf",
-  }
+#  file { '/etc/rsyslog.d/yasa.conf':
+#    notify  => Service['rsyslog'],
+#    ensure  => present,
+#    owner   => 'root',
+#    group   => 'root',
+#    mode    => '0440',
+#    source  => "puppet:///modules/yasa/hosts/$::fqdn/etc/yasalog.conf",
+#  }
 
-  service { 'rsyslog':
-    ensure  => 'running',
-    enable  => 'true',
-    require => Package['rsyslog'],
-  }
+#  service { 'rsyslog':
+#    ensure  => 'running',
+#    enable  => 'true',
+#    require => Package['rsyslog'],
+#  }
   
   file { '/etc/udev/rules.d/10-yasa.rules':
     ensure => present,

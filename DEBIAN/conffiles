@@ -1,1 +1,5 @@
 /etc/default/yasa
+/etc/cron.d/yasa
+/etc/yasa/temp/puppet/00-header
+/etc/yasa/temp/puppet/10-hosts
+/etc/yasa/temp/puppet/20-footer

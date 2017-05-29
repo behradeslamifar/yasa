@@ -5,8 +5,8 @@
 # Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
 # This is properitary software and cant freely distributed.
 # Version number (may use later)
-version=0.7
-client_version=0.4
+version=0.9
+client_version=0.6
 yasarepo_date="2017-05-21"
 
 # Disable ctrl+c in program
@@ -38,7 +38,7 @@ host_add_generate_puppet_config() {
 	    return 1
 	fi
     else
-	service puppetmaster restart
+	invoke-rc.d puppetmaster restart
 
 	# get exit status
 	response=$?
@@ -76,7 +76,8 @@ host_add_puppet() {
 	return 0
     fi
 
-    echo "    '$hostid'," >> $tempfile
+    sed -i 's/^\(.\+\)$/\1,/' $tempfile
+    echo "    '$hostid'" >> $tempfile
 
     # generate site.pp
     host_add_generate_puppet_config
@@ -230,7 +231,7 @@ host_write_rule() {
     then
 	groupid=$(ls $hostpath/temp/grp.*)
 	groupid=${groupid##*.}
-	cp $GRPHOME/$groupid/etc/10-usblock.rules $CLIENTHOME/$hostid/etc/
+	cp $GRPHOME/$groupid/etc/$UDEVCONF $CLIENTHOME/$hostid/etc/
     
     else
 	echo "" > "$hostpath/temp/25-default-whitelist"
@@ -261,9 +262,9 @@ host_write_rule() {
 	do
 		if [ ! -z "$(echo $I | grep '10-header$')" ]
 		then
-			cat $I > "$hostpath/etc/10-usblock.rules"
+			cat $I > "$hostpath/etc/$UDEVCONF"
 		else 
-			cat $I >> "$hostpath/etc/10-usblock.rules"
+			cat $I >> "$hostpath/etc/$UDEVCONF"
 		fi
 	done
     fi
@@ -277,14 +278,19 @@ host_write_rule() {
 host_deploy_config() { 
 	local hostid="$1"
 	local mod=$2
-	local result
+	local response
+	local sshcmd
+	local scpcmd
+	local confighome=/etc/yasa/puppet/files/hosts/$hostid/etc/10-yasa.rules
 
 	if [ "$DEVELOP" == "0" ] 
 	then
+	    if [ "$DEPLOY_TYPE" == "puppet" ]
+	    then
 		puppet kick $hostid >/dev/null 2>&1
-		result=$?
+		response=$?
 		
-		if [ "$result" != "0" ]
+		if [ "$response" != "0" ]
 		then
 			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 70 
 
@@ -292,6 +298,43 @@ host_deploy_config() {
 			
 			return 1
 		fi
+	    elif [ "$DEPLOY_TYPE" == "ssh" ]
+	    then
+		sshcmd="ssh -oStrictHostKeyChecking=no -i $KEYSDIR/server"
+		scpcmd="scp -oStrictHostKeyChecking=no -i $KEYSDIR/server"
+
+		$scpcmd $confighome root@$hostid:/etc/udev/rules.d/
+
+		# get response
+		response=$?
+
+		if [ "$response" != "0" ]
+		then
+			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 70 
+
+			log_main 106 $hostid - - - Deployment failed.
+			
+			return 1
+		fi
+
+		$sshcmd root@$hostid "/sbin/udevadm control --reload; /sbin/udevadm trigger -c add -t devices -s usb"
+
+		# get response
+		response=$?
+
+		if [ "$response" != "0" ]
+		then
+			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 70 
+
+			log_main 106 $hostid - - - Deployment failed.
+			
+			return 1
+		fi
+
+	    elif [ "$DEPLOY_TYPE" == "salt" ]
+	    then
+		echo "Not implemented"
+	    fi
 	fi
 
 	log_main 107 $hostid - - - Deploy configuration successfully. 
@@ -525,7 +568,7 @@ modify_add_dev() {
 	    log_line_array+=($n "$s")
 	done < $normal_log2
 
-	dialog  --backtitle "$backtitle" --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 5 "${log_line_array[@]}" 2> $output
+	dialog  --backtitle "$backtitle" --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 10 "${log_line_array[@]}" 2> $output
 
 	# get reponse
 	response=$?
@@ -778,7 +821,7 @@ group_modify_dev() {
 	    log_line_array+=($n "$s")
 	done < $INPUT1
 
-	dialog  --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 5 "${log_line_array[@]}" 2> $output
+	dialog  --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 10 "${log_line_array[@]}" 2> $output
 
 	# get reponse
 	response=$?
@@ -902,9 +945,9 @@ group_udev_gen() {
 	do
 		if [ ! -z "$(echo $I | grep '10-header$')" ]
 		then
-			cat $I > "$grouppath/etc/10-usblock.rules"
+			cat $I > "$grouppath/etc/$UDEVCONF"
 		else 
-			cat $I >> "$grouppath/etc/10-usblock.rules"
+			cat $I >> "$grouppath/etc/$UDEVCONF"
 		fi
 	done
 
@@ -1012,7 +1055,26 @@ group_modify_rule() {
 	   			break
 	   		fi
 		else
+		    dialog --backtitle "Group Management" --title " Add Device " --yesno "Do you add device to whitelist?" 6 50
+
+		    # get response
+		    response=$?
+
+		    if [ "$response" == "0" ]
+		    then
 			modify_add_dev group $groupid
+			
+			# if press cancel remove group folder
+			response=$?
+
+			if [ "$response" == "1" ]
+			then
+			    [ -f "$output" ] && rm $output
+			    return 1
+			fi
+		    else
+			break
+		    fi
 	   	fi
 	
 		# add another device
@@ -1287,6 +1349,7 @@ group_add() {
 
 	# group name variable
 	local groupid
+	local grouphome
 	local response
 	
 	while true
@@ -1318,6 +1381,7 @@ group_add() {
 		else 
 			mkdir $GRPHOME/$groupid
 			cp -ar $TEMPHOME/group/* $GRPHOME/$groupid
+			grouphome=$GRPHOME/$groupid
 		
 			break
 		fi
@@ -1331,9 +1395,10 @@ group_add() {
 
 	if [ "$response" == "1" ]
 	then
-		rm -r $GRPHOME/$groupid
+		rm -r $grouphome
+		dialog --backtitle "Group Management" --title " Adding Group Failed "  --msgbox "Adding group failed during error or user cancelation." 6 70
+
 		[ -f "$output" ] && rm $output
-		dialog --backtitle "Group Management" --title "Adding Group Failed !"  --msgbox "Adding group failed during error or user cancelation." 5 60
 		return 1
 	fi
 
@@ -1346,12 +1411,13 @@ group_add() {
 	if [ "$response" == "1" ]
 	then
 		rm -r $GRPHOME/$groupid
+		dialog --backtitle "Group Management" --title " Adding Group Failed "  --msgbox "Adding group failed during error or user cancelation." 6 70
+
 		[ -f "$output" ] && rm $output
-		dialog --backtitle "Group Management" --title "Adding Group Failed !"  --msgbox "Adding group failed during error or user cancelation." 5 60
 		return 1
 	fi
 
-	dialog --backtitle "Group Management" --msgbox "Group added successfully." 5 30
+	dialog --backtitle "Group Management" --msgbox "Group added successfully." 6 70
 
 	log_main 200 - $groupid - - The $groupid group added successfully
 
@@ -1756,7 +1822,7 @@ host_log_entry() {
 	while read n s ; do
 	    ar+=($n "$s")
 	done < $INPUT1
-	dialog  --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 5 "${ar[@]}" 2> $OUTPUT
+	dialog  --title "Founded devices" --menu "Your choozen device will be add to whitelist" 0 80 10 "${ar[@]}" 2> $OUTPUT
 
 	# get response
 	reponse=$?
@@ -1842,7 +1908,7 @@ host_disable_yasa() {
 
 	if [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "0" ]
 	then
-	        sed -i 's/devpath 0/devpath 1/' $CLIENTHOME/$hostid/temp/90-footer
+	    sed -i 's/devpath \(0\|1\)/devpath 1/' $CLIENTHOME/$hostid/temp/90-footer
 	        echo "1" > $CLIENTHOME/$hostid/temp/$WDEF
 	elif [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "1" ] 
 	then
@@ -1877,8 +1943,8 @@ host_enable_yasa() {
 
 	if [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "1" ]
 	then
-	        sed -i 's/devpath 1/devpath 0/' $CLIENTHOME/$hostid/temp/90-footer
-	        echo "1" > $CLIENTHOME/$hostid/temp/$WDEF
+	    sed -i 's/devpath \(1\|0\)/devpath 0/' $CLIENTHOME/$hostid/temp/90-footer
+	        echo "0" > $CLIENTHOME/$hostid/temp/$WDEF
 	elif [ "$(cat $CLIENTHOME/$hostid/temp/$WDEF)" == "0" ] 
 	then
 		echo "Do nothing" >/dev/null
@@ -2491,6 +2557,7 @@ deploy_yasaclient() {
 	# local variables
 	local output=$(mktemp /tmp/usb.XXXXXXX)
 	local hostid
+	local hostname
 	local response
 	local package_name
 	local distro
@@ -2598,18 +2665,73 @@ deploy_yasaclient() {
 	    scpcmd="scp -P $sshport -oStrictHostKeyChecking=no -i $KEYSDIR/server"
 	fi
 
+	# check client hostname config correctly
+	hostname=$($sshcmd root@$hostid "hostname -f")
+
+	if [ "$hostid" != "$hostname" ]
+	then
+	    dialog --backtitle "Install Wizard "  --title " Hostname Configuratoin " --msgbox "Real hostname is different from what you entered. Please config client hostname correctly based on these step and try again:\n\
+		1- Edit /etc/hostname\n\
+		somthing.example.com\n\
+		2- Run \"hostname -F /etc/hostname\"\n\
+		3- edit /etc/hosts\n\
+		192.168.1.10	somthing.example.com somthing" 12 70
+
+	    	return 1
+	fi
+
 	# copy packages based on distribution
 	$scpcmd -r /usr/share/lib/yasa/$distro root@$hostid:/tmp/debs
+	if [ "$?" != "0" ] 
+	then 
+	    dialog --backtitle "Install Wizard "  --title " Installation Failed " --msgbox "Installation failed in while copying packages." 6 70
+	    
+	    [ -f "$output" ] && rm $output
+	    return 1
+	fi
+
 	$scpcmd /usr/share/lib/yasa/$package_name root@$hostid:/tmp/
- 
+	if [ "$?" != "0" ] 
+	then 
+	    dialog --backtitle "Install Wizard "  --title " Installation Failed " --msgbox "Installation failed in while copying packages." 6 70
+	    [ -f "$output" ] && rm $output
+	    return 1
+	fi
 
 	# dpkg -i yasaclient with all dependencies or done with apt-get
+	$sshcmd root@$hostid "DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/debs/{libpython2.7-minimal*,python2.7-minimal*.deb,python-minimal*}"
+	if [ "$?" != "0" ]
+	then 
+	    dialog --backtitle "Install Wizard "  --title " Installation Failed " --msgbox "Installation of predepend packages failed." 6 70
+	    [ -f "$output" ] && rm $output
+	    return 2
+	fi
+
 	$sshcmd root@$hostid "DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/debs/*.deb"
+	if [ "$?" != "0" ]
+	then 
+	    dialog --backtitle "Install Wizard "  --title " Installation Failed " --msgbox "Installation of dependency packages failed." 6 70
+	    [ -f "$output" ] && rm $output
+	    return 3
+	fi
 
 	# set yasaclient answer on client
 	$sshcmd root@$hostid "echo \"yasaclient yasaclient/hostname string $hostid\" | debconf-set-selections ; echo \"yasaclient yasaclient/server_name string $server_name\" | debconf-set-selections"
+	if [ "$?" != "0" ] 
+	then 
+	    dialog --backtitle "Install Wizard "  --title " Installation Failed " --msgbox "Configuration of yasaclient package failed." 6 70
+	    [ -f "$output" ] && rm $output
+	    return 4
+	fi
 
 	$sshcmd root@$hostid "dpkg -i /tmp/$package_name"
+	if [ "$?" != "0" ] 
+	then 
+	    dialog --backtitle "Install Wizard "  --title " Installation Failed " --msgbox "Installtion of yasaclient package failed." 6 70
+	    [ -f "$output" ] && rm $output
+	    
+	    return 4
+	fi
 	
 	# remove temp file if exist    
 	[ -f "$output" ] && rm $output
@@ -2913,7 +3035,7 @@ yasa_cron() {
 	local line
 
 	# remove dev allow rule based on expire time
-	for host_dir in $CLIENTHOME/*
+	for host_dir in "$CLIENTHOME/*"
 	do
 		if [ -d "$host_dir" ]
 		then
@@ -2927,7 +3049,7 @@ yasa_cron() {
 					scomment=$line
 				elif [ ! -z "$(echo $line | grep "^[0-9]" )" ]
 				then
-					if [ ! -z "$(echo $line  | awk '($1 > value ) ' value=$currenttime)" -o "$(echo $line | awk awk '{ print ( $1 ) }')" == "0" ]
+					if [ ! -z "$(echo $line  | awk '($1 > value ) ' value=$currenttime)" -o "$(echo $line | awk '{ print ( $1 ) }')" == "0" ]
 					then
 						echo -e "$ucomment\n$scomment\n$line" >> $TEMP
 					fi

@@ -47,3 +47,6 @@ SERVER_NAME="srv.cvak.local"
 
 # Directory that ssh keys create in
 KEYSDIR="/etc/yasa/keys"
+
+# puppet, ssh, salt
+DEPLOY_TYPE="ssh"
