@@ -1,0 +1,273 @@
+#!/bin/bash
+
+# This is TUI functions. Thease functions only run with bash
+# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
+# This is properitary software and cant freely distributed.
+
+host_mgmt_menu() {
+	# Menu input
+	local output=$(mktemp /tmp/usb.XXXXXXXX)
+	local response
+	
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+	trap "" SIGINT
+
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Client Management Menu" \
+	        --title "[ C L I E N T - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 18 65 8 \
+		1 "Modify a host" \
+		2 "Add new host" \
+		3 "Delete a host" \
+		4 "Enable/Disable Yasa on the client" \
+		5 "Show white list" \
+		6 "Force Deploy Rule" \
+		7 "Sign Ready Clients" \
+	        Exit "Return to Main Menu" 2>"${output}"
+	
+		# get response
+		response=$?
+
+		# if user enter cancel or press esc
+		if [ "$response" == "1" -o "$response" == "255" ]
+		then
+		        # remove temp file
+		        [ -f "$output" ] && rm $output
+
+			return 0
+		fi
+
+	        # make decision
+	        case $(<$output) in
+			1) host_modify;;
+			2) host_add;;
+			3) host_del;;
+	                4) host_en_dis;;
+			5) whitelist_show host;;
+			6) host_force_update;;
+			7) host_sign_main;;
+	                Exit) echo "Bye"; break;;
+	        esac
+	
+
+	done	
+	return 0
+}
+
+group_mgmt_menu() {
+	# Menu input
+	local output=$(mktemp /tmp/usb.XXXXXXXX)
+	local response
+	
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+	trap "" SIGINT
+
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Group Management Menu" \
+	        --title "[ G R O U P - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 16 65 6 \
+		1 "Add new group" \
+		2 "Delete a group" \
+		3 "Modify group members" \
+		4 "Modify group rules" \
+		5 "Show group (show members and rules)" \
+	        Exit "Return to Main Menu" 2>"${output}"
+	
+		# get response
+		response=$?
+
+		# if user enter cancel or press esc
+		if [ "$response" == "1" -o "$response" == "255" ]
+		then
+		        # remove temp file
+		        [ -f "$output" ] && rm $output
+
+			return 0
+		fi
+
+	        # make decision
+	        case $(<$output) in
+			1) group_add;;
+			2) group_del;;
+			3) group_modify_members;;
+			4) group_modify;;
+			5) whitelist_show group;;
+	                Exit) break;;
+	        esac
+	
+
+	done	
+	return 0
+}
+
+report_menu() {
+	# Menu input
+	local output=$(mktemp /tmp/usb.XXXXXXXX)
+	local response
+	
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+	trap "" SIGINT
+
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Report Menu" \
+	        --title "[ R E P O R T - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 16 65 6 \
+		1 "Add/Remove Clients" \
+		2 "Add/Remove Groups" \
+		3 "Deploying Rules" \
+		4 "Report based on custom search" \
+	        Exit "Return to Main Menu" 2>"${output}"
+	
+		# get response
+		response=$?
+
+		# if user enter cancel or press esc
+		if [ "$response" == "1" -o "$response" == "255" ]
+		then
+		        # remove temp file
+		        [ -f "$output" ] && rm $output
+
+			return 0
+		fi
+	
+	        # make decision
+	        case $(<$output) in
+			1) report_add_remove_hosts;;
+			2) report_add_remove_groups;;
+			3) report_deploy_config;;
+			4) report_custom_search;;
+	                Exit) break;;
+	        esac
+	
+
+	done	
+	return 0
+}
+
+about_yasa() {
+	# local variables
+	dialog --backtitle "Yasa Management and Utility" --title "About Yasa" --msgbox "Yasa is project to control and monitor USB devices \nYasa version $version \nYasaclient version $client_version \nYasa repository updating data  $yasarepo_date " 10 80
+
+	return 0
+}
+
+yasa_advanced_menu() {
+	# Menu input
+	local output=$(mktemp /tmp/usb.XXXXXXXX)
+	local response
+	
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+	trap "" SIGINT
+
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Install Menu" \
+	        --title "[ M A N A G E M E M E N T - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-9 to choose an option.\
+	        Choose the TASK" 16 65 9 \
+		1 "Intall new client wizard" \
+		2 "Prepare server installation" \
+		3 "Generate New SSH keys" \
+		4 "About" \
+	        Exit "Return to Main Menu" 2>"${output}"
+	
+		# get response
+		response=$?
+
+		# if user enter cancel or press esc
+		if [ "$response" == "1" -o "$response" == "255" ]
+		then
+		        # remove temp file
+		        [ -f "$output" ] && rm $output
+
+			return 0
+		fi
+
+	        # make decision
+	        case $(<$output) in
+			1) deploy_yasaclient;;
+			2) yasa_preparation;;
+			3) generate_new_ssh_keys;;
+			4) about_yasa;;
+	                Exit) break;;
+	        esac
+	
+	done	
+	return 0
+}
+
+
+main_menu() {
+	# Menu input
+	output=$(mktemp /tmp/usb.XXXXXXXX)
+	local response
+	
+	# trap and delete temp file
+	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+	trap "" SIGINT
+	
+	while true
+	do
+	        ### display main menu ###
+	        /usr/bin/dialog --clear --backtitle "Yasa Main Menu" \
+	        --title "[ M A I N - M E N U ]" \
+	        --menu "You can use the UP/DOWN arrow keys, the first \
+	        letter of the choice as a hot key, or the \
+	        number keys 1-4 to choose an option.\
+	        Choose the TASK" 16 65 5 \
+		1 "Client Management" \
+		2 "Group Management" \
+	        3 "Reports" \
+	        4 "Yasa Management and Utility" \
+	        Exit "Exit and Logout" 2>"$output"
+	
+		# get response
+		response=$?
+
+		# if user enter cancel or press esc
+		if [ "$response" == "1" -o "$response" == "255" ]
+		then
+		        # remove temp file
+		        [ -f "$output" ] && rm $output
+
+			return 0
+		fi
+
+	        # make decision
+	        case $(<$output) in
+			1) host_mgmt_menu;;
+			2) group_mgmt_menu;;
+	                3) report_menu;;
+	                4) yasa_advanced_menu;;
+	                Exit) echo "Bye"; break;;
+	        esac
+	done
+	
+	[ -f "$output" ] && rm $output
+
+	return 0
+}
+
+

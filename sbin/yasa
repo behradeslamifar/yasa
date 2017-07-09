@@ -5,7 +5,7 @@
 # Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
 # This is properitary software and cant freely distributed.
 # Version number (may use later)
-version=0.9
+version=0.9.5
 client_version=0.6
 yasarepo_date="2017-05-21"
 
@@ -15,75 +15,8 @@ trap "" SIGINT
 # Load default configuration
 source /etc/default/yasa
 
-host_add_generate_puppet_config() {
-    ## generate new site.pp for puppet configuration and reload puppet
-    # local variables
-    local tempdir=/etc/yasa/temp/puppet
-    local puppetconf=/etc/puppet/manifests/site.pp
-    local response
-
-    cat $tempdir/* > $puppetconf
-
-    if [ -x "/bin/systemctl" ]
-    then
-	systemctl restart puppetmaster
-
-	# get exit status
-	response=$?
-
-	if [ "$response" != "0" ]
-	then
-	    dialog --backtitle "Host Management" --title "Generate Config" --msgbox "Puppet reconfiguration failed. Please check puppet site.pp manually" 6 70
-
-	    return 1
-	fi
-    else
-	invoke-rc.d puppetmaster restart
-
-	# get exit status
-	response=$?
-
-	if [ "$reponse" != "0" ]
-	then
-	    dialog --backtitle "Host Management" --title "Generate Config" --msgbox "Puppet reconfiguration failed. Please check puppet manually" 6 70
-
-	    return 1
-	fi
-
-    fi
-
-    return 0
-}
-
-host_add_puppet() {
-    ## add client to puppet config to generate new config
-    # local variables
-    local response
-    local hostid=$1
-    local tempfile=/etc/yasa/temp/puppet/10-hosts
-
-    if [ -z "$hostid" ]
-    then
-	dialog --backtitle "Host Management" --title "Generate Config" --msgbox "Hostname variable is empty. Please report to developer" 6 70
-
-	return 1
-    fi
-
-    if [ ! -z "$(grep "'$hostid'" $tempfile)" ]
-    then
-	echo "This host exist in config" > /dev/null
-
-	return 0
-    fi
-
-    sed -i 's/^\(.\+\)$/\1,/' $tempfile
-    echo "    '$hostid'" >> $tempfile
-
-    # generate site.pp
-    host_add_generate_puppet_config
-
-    return 0
-}
+source /usr/lib/yasa/yasa-functions
+source /usr/lib/yasa/yasa-tui
 
 check_prerequire_config() {
 	## This function check default need to run corrctly yasa
@@ -216,183 +149,6 @@ log_main() {
 	return 0
 }
 
-host_write_rule() { 
-    # temperorly file 
-    TEMP=$(mktemp /tmp/usb.XXXXXXXX)
-    
-    # trap and delete temp file
-    trap "rm $TEMP; exit" SIGHUP SIGINT SIGTERM
-    
-    local hostid="$1"
-    local hostpath="$CLIENTHOME/$hostid"
-    local groupid
-
-    if [ -e $hostpath/temp/grp.* ]
-    then
-	groupid=$(ls $hostpath/temp/grp.*)
-	groupid=${groupid##*.}
-	cp $GRPHOME/$groupid/etc/$UDEVCONF $CLIENTHOME/$hostid/etc/
-    
-    else
-	echo "" > "$hostpath/temp/25-default-whitelist"
-	cat "$hostpath/temp/$WCLASS" | grep -v "^#\|^$" | while read line; do
-                echo "ATTR{bInterfaceClass}==\"$line\", ENV{valid}=\"2\""  >> "$hostpath/temp/25-default-whitelist"
-	done
-	
-	echo "" > "$hostpath/temp/20-whitelist"
-        cat "$hostpath/temp/$WDEVICE" | grep -v "^#\|^$" > $TEMP
-	
-	while read validtime vid pid serial 
-	do
-	        if [ -z "$serial" -a -z "$pid" ]
-		then
-	                echo "ATTR{idVendor}==\"$vid\", ENV{valid}=\"1\""  >> "$hostpath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ENV{valid}=\"2\""  >> "$hostpath/temp/20-whitelist"
-		elif [ -z "$serial" ]
-		then
-	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ENV{valid}=\"1\""  >> "$hostpath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ENV{valid}=\"2\""  >> "$hostpath/temp/20-whitelist"
-	        else
-	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ATTR{serial}==\"$serial\", ENV{valid}=\"1\"" >> "$hostpath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ATTRS{serial}==\"$serial\", ENV{valid}=\"2\"" >> "$hostpath/temp/20-whitelist"
-	        fi
-	done < $TEMP
-	
-	for I in $hostpath/temp/[0-9]*
-	do
-		if [ ! -z "$(echo $I | grep '10-header$')" ]
-		then
-			cat $I > "$hostpath/etc/$UDEVCONF"
-		else 
-			cat $I >> "$hostpath/etc/$UDEVCONF"
-		fi
-	done
-    fi
-
-	#remove temp file
-	[ -f "$TEMP" ] && rm $TEMP
-
-	return 0
-}
-
-host_deploy_config() { 
-	local hostid="$1"
-	local mod=$2
-	local response
-	local sshcmd
-	local scpcmd
-	local confighome=/etc/yasa/puppet/files/hosts/$hostid/etc/10-yasa.rules
-
-	if [ "$DEVELOP" == "0" ] 
-	then
-	    if [ "$DEPLOY_TYPE" == "puppet" ]
-	    then
-		puppet kick $hostid >/dev/null 2>&1
-		response=$?
-		
-		if [ "$response" != "0" ]
-		then
-			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 70 
-
-			log_main 106 $hostid - - - Deployment failed.
-			
-			return 1
-		fi
-	    elif [ "$DEPLOY_TYPE" == "ssh" ]
-	    then
-		sshcmd="ssh -oStrictHostKeyChecking=no -i $KEYSDIR/server"
-		scpcmd="scp -oStrictHostKeyChecking=no -i $KEYSDIR/server"
-
-		$scpcmd $confighome root@$hostid:/etc/udev/rules.d/
-
-		# get response
-		response=$?
-
-		if [ "$response" != "0" ]
-		then
-			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 70 
-
-			log_main 106 $hostid - - - Deployment failed.
-			
-			return 1
-		fi
-
-		$sshcmd root@$hostid "/sbin/udevadm control --reload; /sbin/udevadm trigger -c add -t devices -s usb"
-
-		# get response
-		response=$?
-
-		if [ "$response" != "0" ]
-		then
-			[ "$mod" != "silent" ] && dialog --msgbox "$hostid deployment failed. Check your network connection and try again." 6 70 
-
-			log_main 106 $hostid - - - Deployment failed.
-			
-			return 1
-		fi
-
-	    elif [ "$DEPLOY_TYPE" == "salt" ]
-	    then
-		echo "Not implemented"
-	    fi
-	fi
-
-	log_main 107 $hostid - - - Deploy configuration successfully. 
-	
-	return 0
-}
-
-
-device_existence_check() {
-	## This function check existance of device in whitelist
-	## $1 -> host,group , $2 -> hostid,groupid 
-	local type=$1
-	local id=$2
-	local groupid="$3"
-        local vendorid="$4"
-        local productid="$5"
-        local serial="$6"
-
-	# set home
-	if [ "$type" == "host" ]
-	then
-		home=$CLIENTHOME
-	else
-		home=$GRPHOME
-	fi
-
-	# return 1 if device not added befor
-	[ -z $(grep ".*$vendorid.*$productid.*$serial.*" $home/$id/temp/$WDEVICE | cut -f 1 -d " ") ] && return 1
-
-	# return 0 if device already exist 
-	return 0
-}
-
-class_existence_check() {
-	## This function check existance of class in whitelist
-	## $1 -> host,group , $2 -> hostid,groupid 
-	local type=$1
-	local id=$2
-	local classid="$3"
-
-	# set home
-	if [ "$type" == "host" ]
-	then
-		home=$CLIENTHOME
-	else
-		home=$GRPHOME
-	fi
-
-	# return 1 if device not added befor
-	[ -z $(grep "$classid" $home/$id/temp/$WCLASS | cut -f 1 -d " ") ] && echo "off" && return 1
-
-	# return 0 if device already exist 
-	echo "on"	
-
-	return 0
-
-}
-
 modify_class() { 
 	## This function create iWCLASS (class.allow) file for host and for group, both.
 	## $1 -> host,group , $2 -> hostid,groupid 
@@ -514,6 +270,7 @@ modify_add_dev() {
 	local validtime
 	local currenttime
 	local exist
+	local comment
 
 	# define local array
 	local log_line_array=()
@@ -597,10 +354,12 @@ modify_add_dev() {
 	if [ "$exist" != "1" ]
 	then
 		dialog --backtitle "$backtitle" --inputbox "Write comment for this device" 8 80 "no comment" 2> $output
-		local comment=$(<$output)
 
 		# get response
 		response=$?
+
+		comment=$(<$output)
+
 
 		# if user cancel the dialog or press escape 
 		if [ "$response" == "1" -o "$response" == "255" ]
@@ -617,10 +376,12 @@ modify_add_dev() {
 		while true
 		do
 			dialog --backtitle "$backtitle" --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $output
-			validtime=$(<$output)
 
 			# get response
 			response=$?
+
+			validtime=$(<$output)
+
 
 			# if user cancel the dialog or press escape 
 			if [ "$response" == "1" -o "$response" == "255" ]
@@ -848,10 +609,12 @@ group_modify_dev() {
 
 	# input comment
 	dialog --inputbox "Write comment for this device" 8 80 "no comment" 2> $output
-	local comment=$(<$output)
 
 	# get response
 	response=$?
+	
+	local comment=$(<$output)
+
 
 	# if user cancel the dialog or press escape 
 	if [ "$response" == "1" -o "$response" == "255" ]
@@ -868,10 +631,11 @@ group_modify_dev() {
 	while true
 	do
 		dialog --inputbox "Please enter validation time in houre (enter 0 or leave blank for unlimite time)" 8 80 0 2> $output
-		validtime=$(<$output)
 
 		# get response
 		response=$?
+
+		validtime=$(<$output)
 
 		# if user cancel the dialog or press escape 
 		if [ "$response" == "1" -o "$response" == "255" ]
@@ -905,57 +669,6 @@ group_modify_dev() {
 	[ -f "$output" ] && rm $output
 	
 	return 0
-}
-
-group_udev_gen() {
-    # temperorly file 
-    TEMP=$(mktemp /tmp/usb.XXXXXXXX)
-    
-    # trap and delete temp file
-    trap "rm $TEMP; exit" SIGHUP SIGINT SIGTERM
-    
-    local groupid="$1"
-    local grouppath="$GRPHOME/$groupid"
-
-	echo "" > "$grouppath/temp/25-default-whitelist"
-	cat "$grouppath/temp/$WCLASS" | grep -v "^#\|^$" | while read line; do
-                echo "ATTR{bInterfaceClass}==\"$line\", ENV{valid}=\"2\""  >> "$grouppath/temp/25-default-whitelist"
-	done
-	
-	echo "" > "$grouppath/temp/20-whitelist"
-        cat "$grouppath/temp/$WDEVICE" | grep -v "^#\|^$" > $TEMP
-	
-	while read validtime vid pid serial 
-	do
-	        if [ -z "$serial" -a -z "$pid" ]
-		then
-	                echo "ATTR{idVendor}==\"$vid\", ENV{valid}=\"1\""  >> "$grouppath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ENV{valid}=\"2\""  >> "$grouppath/temp/20-whitelist"
-		elif [ -z "$serial" ]
-		then
-	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ENV{valid}=\"1\""  >> "$grouppath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ENV{valid}=\"2\""  >> "$grouppath/temp/20-whitelist"
-	        else
-	                echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ATTR{serial}==\"$serial\", ENV{valid}=\"1\"" >> "$grouppath/temp/20-whitelist"
-	                echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ATTRS{serial}==\"$serial\", ENV{valid}=\"2\"" >> "$grouppath/temp/20-whitelist"
-	        fi
-	done < $TEMP
-	
-	for I in $grouppath/temp/[0-9]*
-	do
-		if [ ! -z "$(echo $I | grep '10-header$')" ]
-		then
-			cat $I > "$grouppath/etc/$UDEVCONF"
-		else 
-			cat $I >> "$grouppath/etc/$UDEVCONF"
-		fi
-	done
-
-	#remove temp file
-	[ -f "$TEMP" ] && rm $TEMP
-
-	return 0
-
 }
 
 
@@ -1047,6 +760,7 @@ group_modify_rule() {
 			3) echo "Do nothing" > /dev/null ;;
 	   	     esac
 
+		     	##bug
 	   		# if press cancel remove group folder
 	   		response=$?
 
@@ -1118,22 +832,6 @@ group_modify_rule() {
 
 }
 
-group_find_member() {
-	# define local variable
-	local groupid="$1"
-	local hostid="$2"
-
-	group_member=$(ls $CLIENTHOME/$hostid/temp/grp.* 2>/dev/null | grep "\<$groupid\>")
-	if [ ! -z "$group_member" ]
-	then 
-		echo "on"
-	else
-		echo "off"
-	fi
-
-	return 0
-}
-
 group_modify_members() {
 	# temp file for menu output
 	local output=$(mktemp /tmp/usb.XXXXXXX)
@@ -1159,6 +857,14 @@ group_modify_members() {
 	        # count number of group
 	        groupsum=$(ls $GRPHOME | wc -l)
 	
+		# if no any group 
+		if [ "$groupsum" == "0" ] 
+		then
+			dialog --backtitle "Group Management" --title "Modify Group" --msgbox "No Groups" 6 30
+	
+			return 1
+		fi
+
 	        # choose group to modify
 	        dialog --title "Group List" --menu "Choose one group to add/remove member" 10 60 $groupsum $(for i in $(ls $GRPHOME/); do echo "$i ${i%%.*} " | tr -d "\n"; done) 2> $output
 	
@@ -1487,6 +1193,7 @@ group_del() {
 
 	# are you sure
 	dialog --backtitle "Group Management" --title " Warning " --yesno "Do you realy want to delete?\nThis task cant recover after progress" 6 50
+
 	# get response
 	response=$?
 
@@ -2088,7 +1795,15 @@ host_add() {
 	    	Log) host_log_entry hostid ;;
 	    	Manual) host_manual_entry hostid ;;
 	    esac
-	    
+	   
+	    if [ "$?" != "0" ]
+	    then
+		# remove temp file
+	    	[ -f "$output" ] && rm $output
+	    	
+	    	return 1
+	    fi
+
 	    # hostid validation
 	    if [ -z "$(echo "$hostid" | egrep "^(([a-zA-Z]{1})|([a-zA-Z]{1}[a-zA-Z]{1})|([a-zA-Z]{1}[0-9]{1})|([0-9]{1}[a-zA-Z]{1})|([a-zA-Z0-9][a-zA-Z0-9_-]{1,61}[a-zA-Z0-9]))\.([a-zA-Z]{2,6}|[a-zA-Z0-9-]{2,30}\.[a-zA-Z]{2,})$")" ] 
 	    then
@@ -2805,220 +2520,6 @@ generate_new_ssh_keys() {
     return 0
 }
 
-host_mgmt_menu() {
-	# Menu input
-	local output=$(mktemp /tmp/usb.XXXXXXXX)
-	local response
-	
-	# trap and delete temp file
-	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
-	trap "" SIGINT
-
-	while true
-	do
-	        ### display main menu ###
-	        /usr/bin/dialog --clear --backtitle "Client Management Menu" \
-	        --title "[ C L I E N T - M E N U ]" \
-	        --menu "You can use the UP/DOWN arrow keys, the first \
-	        letter of the choice as a hot key, or the \
-	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 18 65 8 \
-		1 "Modify a host" \
-		2 "Add new host" \
-		3 "Delete a host" \
-		4 "Enable/Disable Yasa on the client" \
-		5 "Show white list" \
-		6 "Force Deploy Rule" \
-		7 "Sign Ready Clients" \
-	        Exit "Return to Main Menu" 2>"${output}"
-	
-		# get response
-		response=$?
-
-		# if user enter cancel or press esc
-		if [ "$response" == "1" -o "$response" == "255" ]
-		then
-		        # remove temp file
-		        [ -f "$output" ] && rm $output
-
-			return 0
-		fi
-
-	        # make decision
-	        case $(<$output) in
-			1) host_modify;;
-			2) host_add;;
-			3) host_del;;
-	                4) host_en_dis;;
-			5) whitelist_show host;;
-			6) host_force_update;;
-			7) host_sign_main;;
-	                Exit) echo "Bye"; break;;
-	        esac
-	
-
-	done	
-	return 0
-}
-
-group_mgmt_menu() {
-	# Menu input
-	local output=$(mktemp /tmp/usb.XXXXXXXX)
-	local response
-	
-	# trap and delete temp file
-	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
-	trap "" SIGINT
-
-	while true
-	do
-	        ### display main menu ###
-	        /usr/bin/dialog --clear --backtitle "Yasa Group Management Menu" \
-	        --title "[ G R O U P - M E N U ]" \
-	        --menu "You can use the UP/DOWN arrow keys, the first \
-	        letter of the choice as a hot key, or the \
-	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 16 65 6 \
-		1 "Add new group" \
-		2 "Delete a group" \
-		3 "Modify group members" \
-		4 "Modify group rules" \
-		5 "Show group (show members and rules)" \
-	        Exit "Return to Main Menu" 2>"${output}"
-	
-		# get response
-		response=$?
-
-		# if user enter cancel or press esc
-		if [ "$response" == "1" -o "$response" == "255" ]
-		then
-		        # remove temp file
-		        [ -f "$output" ] && rm $output
-
-			return 0
-		fi
-
-	        # make decision
-	        case $(<$output) in
-			1) group_add;;
-			2) group_del;;
-			3) group_modify_members;;
-			4) group_modify;;
-			5) whitelist_show group;;
-	                Exit) break;;
-	        esac
-	
-
-	done	
-	return 0
-}
-
-report_menu() {
-	# Menu input
-	local output=$(mktemp /tmp/usb.XXXXXXXX)
-	local response
-	
-	# trap and delete temp file
-	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
-	trap "" SIGINT
-
-	while true
-	do
-	        ### display main menu ###
-	        /usr/bin/dialog --clear --backtitle "Yasa Report Menu" \
-	        --title "[ R E P O R T - M E N U ]" \
-	        --menu "You can use the UP/DOWN arrow keys, the first \
-	        letter of the choice as a hot key, or the \
-	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 16 65 6 \
-		1 "Add/Remove Clients" \
-		2 "Add/Remove Groups" \
-		3 "Deploying Rules" \
-		4 "Report based on custom search" \
-	        Exit "Return to Main Menu" 2>"${output}"
-	
-		# get response
-		response=$?
-
-		# if user enter cancel or press esc
-		if [ "$response" == "1" -o "$response" == "255" ]
-		then
-		        # remove temp file
-		        [ -f "$output" ] && rm $output
-
-			return 0
-		fi
-	
-	        # make decision
-	        case $(<$output) in
-			1) report_add_remove_hosts;;
-			2) report_add_remove_groups;;
-			3) report_deploy_config;;
-			4) report_custom_search;;
-	                Exit) break;;
-	        esac
-	
-
-	done	
-	return 0
-}
-
-about_yasa() {
-	# local variables
-	dialog --backtitle "Yasa Management and Utility" --title "About Yasa" --msgbox "Yasa is project to control and monitor USB devices \nYasa version $version \nYasaclient version $client_version \nYasa repository updating data  $yasarepo_date " 10 80
-
-	return 0
-}
-
-yasa_advanced_menu() {
-	# Menu input
-	local output=$(mktemp /tmp/usb.XXXXXXXX)
-	local response
-	
-	# trap and delete temp file
-	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
-	trap "" SIGINT
-
-	while true
-	do
-	        ### display main menu ###
-	        /usr/bin/dialog --clear --backtitle "Yasa Install Menu" \
-	        --title "[ M A N A G E M E M E N T - M E N U ]" \
-	        --menu "You can use the UP/DOWN arrow keys, the first \
-	        letter of the choice as a hot key, or the \
-	        number keys 1-9 to choose an option.\
-	        Choose the TASK" 16 65 9 \
-		1 "Intall new client wizard" \
-		2 "Prepare server installation" \
-		3 "Generate New SSH keys" \
-		4 "About" \
-	        Exit "Return to Main Menu" 2>"${output}"
-	
-		# get response
-		response=$?
-
-		# if user enter cancel or press esc
-		if [ "$response" == "1" -o "$response" == "255" ]
-		then
-		        # remove temp file
-		        [ -f "$output" ] && rm $output
-
-			return 0
-		fi
-
-	        # make decision
-	        case $(<$output) in
-			1) deploy_yasaclient;;
-			2) yasa_preparation;;
-			3) generate_new_ssh_keys;;
-			4) about_yasa;;
-	                Exit) break;;
-	        esac
-	
-	done	
-	return 0
-}
-
 yasa_cron() {
         # temperorly file 
         TEMP=$(mktemp /tmp/usb.XXXXXXXX)
@@ -3085,57 +2586,6 @@ yasa_auth() {
 	return 0
 }
 
-
-main_menu() {
-	# Menu input
-	output=$(mktemp /tmp/usb.XXXXXXXX)
-	local response
-	
-	# trap and delete temp file
-	trap "rm $output; exit" SIGHUP SIGINT SIGTERM
-	trap "" SIGINT
-	
-	while true
-	do
-	        ### display main menu ###
-	        /usr/bin/dialog --clear --backtitle "Yasa Main Menu" \
-	        --title "[ M A I N - M E N U ]" \
-	        --menu "You can use the UP/DOWN arrow keys, the first \
-	        letter of the choice as a hot key, or the \
-	        number keys 1-4 to choose an option.\
-	        Choose the TASK" 16 65 5 \
-		1 "Client Management" \
-		2 "Group Management" \
-	        3 "Reports" \
-	        4 "Yasa Management and Utility" \
-	        Exit "Exit and Logout" 2>"$output"
-	
-		# get response
-		response=$?
-
-		# if user enter cancel or press esc
-		if [ "$response" == "1" -o "$response" == "255" ]
-		then
-		        # remove temp file
-		        [ -f "$output" ] && rm $output
-
-			return 0
-		fi
-
-	        # make decision
-	        case $(<$output) in
-			1) host_mgmt_menu;;
-			2) group_mgmt_menu;;
-	                3) report_menu;;
-	                4) yasa_advanced_menu;;
-	                Exit) echo "Bye"; break;;
-	        esac
-	done
-	
-	[ -f "$output" ] && rm $output
-
-	return 0
-}
 
 # Non-interactive mod
 if [ ! -z "$1" ]
