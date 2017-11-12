@@ -5,7 +5,7 @@
 # Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
 # This is properitary software and cant freely distributed.
 # Version number (may use later)
-version=0.9.5
+version=0.9.6
 client_version=0.6
 yasarepo_date="2017-05-21"
 
@@ -69,7 +69,8 @@ check_prerequire_config() {
 
 	# check yasa module linked to yasa config folder
 	echo -en "Yasa module installation ... "
-	if [ "$(readlink /etc/puppet/modules/yasa)" != "/etc/yasa/puppet" ]
+	if /bin/false
+	    #[ "$(readlink /etc/puppet/modules/yasa)" != "/etc/yasa/puppet" ]
 	then
 		echo -e "\e[91mfail\e[0m"
 		return 5
@@ -1524,7 +1525,36 @@ host_log_entry() {
 		return 1
 	fi
 	
+	# check that DEVICELOG not to be empty
+	if [ ! -s "$DEVICELOG" ] 
+	then
+	    logger -s "Device log was empty"
+	    dialog --backtitle "Client Management" --title "Error Message" --msgbox "Device log was empty." 6 60
+
+	    # remove temp file
+	    [ -f "$INPUT1" ] && rm $INPUT1
+	    [ -f "$INPUT2" ] && rm $INPUT2
+	    [ -f "$OUTPUT" ] && rm $OUTPUT
+	    
+	    return 1
+	fi
+
 	cat $DEVICELOG | grep -i "$keyword" | tail | tac | cat -n | expand  | tr -s ' ' | sed 's/ //' >$INPUT2
+
+	# check if search result is empty
+	if [ ! -s "$INPUT2" ]
+	then
+	    logger -s "Not found any result"
+	    dialog --backtitle "Client Management" --title "Error Message" --msgbox "Not found any result." 6 60
+
+	    # remove temp file
+	    [ -f "$INPUT1" ] && rm $INPUT1
+	    [ -f "$INPUT2" ] && rm $INPUT2
+	    [ -f "$OUTPUT" ] && rm $OUTPUT
+	    
+	    return 1
+	fi
+
 	cat "$INPUT2" | cut -f 1,3,5,6,7,8 -d " " > "$INPUT1"
 	while read n s ; do
 	    ar+=($n "$s")
@@ -1561,8 +1591,7 @@ host_log_entry() {
 	[ -f "$INPUT2" ] && rm $INPUT2
 	[ -f "$OUTPUT" ] && rm $OUTPUT
 	
-	return 1
-
+	return 0
 }
 
 host_manual_entry() {

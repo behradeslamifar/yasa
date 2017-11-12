@@ -26,7 +26,25 @@ then
     	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
     fi
 else
-    exit 1
+    mkdir /etc/puppet/modules
+
+    if [ -L /etc/puppet/modules/yasa ] 
+    then
+    	link=$(readlink /etc/puppet/modules/yasa)
+    	if [ "$link" == "/etc/yasa/puppet" ]
+    	then
+    		echo "Do nothing" > /dev/null
+    	else
+    		rm /etc/puppet/modules/yasa
+     		ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    	fi
+    elif [ -e /etc/puppet/modules/yasa ]
+    then
+    	rm /etc/puppet/modules/yasa
+     	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    else
+    	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    fi
 fi
 
 # genrate ssh key for yasaclient deployment
