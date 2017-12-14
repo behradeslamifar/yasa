@@ -49,4 +49,4 @@ SERVER_NAME="srv.cvak.local"
 KEYSDIR="/etc/yasa/keys"
 
 # puppet, ssh, salt
-DEPLOY_TYPE="ssh"
+DEPLOY_TYPE="puppet"

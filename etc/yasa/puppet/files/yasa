@@ -18,12 +18,23 @@ yasa_auth() {
         return 0
 }
 
+usage() {
+	echo "Usage: /usr/lib/yasa/sbin/yasa <auth> <device_path> <0|1>" 1>&2
+	echo "		0: Open USB device, 1: Block USB device" 1>&2
+}
+
 if [ ! -z "$1" ]
 then
         if [ "$1" = "auth" ]
         then
                 yasa_auth $2 $3
+	else
+	    	usage
+		exit 1
         fi
+else
+        usage
+	exit 1
 fi
 
 exit 0

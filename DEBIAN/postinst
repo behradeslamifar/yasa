@@ -2,48 +2,50 @@
 
 set -e
 
+puppet_modules_dir=/etc/puppetlabs/code/environments/production/modules/
+
 chmod 755 /etc/yasa/{group,puppet,skell}
 chmod 755 /etc/yasa/skell/{etc,group,temp}
 chmod 755 /etc/yasa/puppet/{files,manifests,templates}
 
-if [ -d /etc/puppet/modules ]
+if [ -d "$puppet_modules_dir" ]
 then
-    if [ -L /etc/puppet/modules/yasa ] 
+    if [ -L "$puppet_modules_dir/yasa" ] 
     then
-    	link=$(readlink /etc/puppet/modules/yasa)
+    	link=$(readlink $puppet_modules_dir/yasa)
     	if [ "$link" == "/etc/yasa/puppet" ]
     	then
     		echo "Do nothing" > /dev/null
     	else
-    		rm /etc/puppet/modules/yasa
-     		ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    		rm -r $puppet_modules_dir/yasa
+     		ln -s /etc/yasa/puppet $puppet_modules_dir/yasa
     	fi
-    elif [ -e /etc/puppet/modules/yasa ]
+    elif [ -e $puppet_modules_dir/yasa ]
     then
-    	rm /etc/puppet/modules/yasa
-     	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    	rm -r $puppet_modules_dir/yasa
+     	ln -s /etc/yasa/puppet $puppet_modules_dir/yasa
     else
-    	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    	ln -s /etc/yasa/puppet $puppet_modules_dir/yasa
     fi
 else
-    mkdir /etc/puppet/modules
+    mkdir -p $puppet_modules_dir
 
-    if [ -L /etc/puppet/modules/yasa ] 
+    if [ -L "$puppet_modules_dir/yasa" ] 
     then
-    	link=$(readlink /etc/puppet/modules/yasa)
+    	link=$(readlink $puppet_modules_dir/yasa)
     	if [ "$link" == "/etc/yasa/puppet" ]
     	then
     		echo "Do nothing" > /dev/null
     	else
-    		rm /etc/puppet/modules/yasa
-     		ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    		rm -r $puppet_modules_dir/yasa
+     		ln -s /etc/yasa/puppet $puppet_modules_dir/yasa
     	fi
-    elif [ -e /etc/puppet/modules/yasa ]
+    elif [ -e "$puppet_modules_dir/yasa" ]
     then
-    	rm /etc/puppet/modules/yasa
-     	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    	rm -r $puppet_modules_dir/yasa
+     	ln -s /etc/yasa/puppet $puppet_modules_dir/yasa
     else
-    	ln -s /etc/yasa/puppet /etc/puppet/modules/yasa
+    	ln -s /etc/yasa/puppet $puppet_modules_dir/yasa
     fi
 fi
 

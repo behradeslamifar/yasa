@@ -36,7 +36,7 @@ check_prerequire_config() {
 	# check puppetmaster is installed
 	echo -en "Dependency check \"Puppet Master\" ... "
 
-	result=$(dpkg -l puppetmaster 2> /dev/null | grep "^ii")
+	result=$(dpkg -l puppetserver 2> /dev/null | grep "^ii")
 	if [ -z "$result" ]
 	then
 		echo -e "\e[91mfail\e[0m"
