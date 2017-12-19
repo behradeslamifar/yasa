@@ -1,2 +1,0 @@
-# This rule generate based on dev.allow list
-# sample: ATTR{idVendor}=="090c", ATTR{idProduct}=="1000", ATTR{serial}=="1104057700002830", ENV{valid}="1"

@@ -1,0 +1,246 @@
+#!/bin/bash
+
+# This script is based on IOI organization request for control on USB connections 
+# and devices. 
+# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
+# This is properitary software and cant freely distributed.
+# 
+# gmagr script for manage groups in yasa
+# usage: gmgr <create|delete|rule-gen|add-member> [arg]
+#
+# Version number (may use later)
+version=0.1
+
+# System variable
+source /etc/default/yasa
+
+function_select=$1
+shift
+arg="$@"
+
+usage() {
+    echo "Usage: gmgr <create|delete|rule-gen|add-member> [arg]"
+
+    return 0
+}
+
+log() {
+    # local variables
+    local severity=$1
+    shift
+
+    if [ -z "$severity" ] 
+    then
+	usage
+	return 1
+    elif [ "$severity" != "info"  -a  "$severity" != "warning" -a  "$severity" != "error" ]
+    then
+	return 1
+    fi
+
+    logger -p local0.$severity -t Yasa "$@"
+
+    return 0
+}
+
+group_verify() {
+    [ -z "$1" ] && usage && return 1
+
+    if [ -z "$(echo "$1" | egrep "[a-z0-9]{3,100}")" ]
+    then
+	return 1
+    fi
+
+    return 0
+}
+
+group_exist() {
+    [ -z "$1" ] && usage && return 1
+
+    if [ -z "$(grep "^$1:" $GROUPFILE)" ]
+    then
+	return 1
+    elif [ -d "$GROUPHOME/$1" ]
+    then
+	return 1
+    fi
+
+    return 0
+}
+
+group_generate_udev_rule() {
+    # create udev rule
+    # local variables
+    local groupid=$1
+
+    [ -z "$groupid" ] && usage && return 1
+
+    # temperorly file 
+    TEMP=$(mktemp /tmp/usb.XXXXXXXX)
+    
+    # trap and delete temp file
+    trap "rm $TEMP; exit" SIGHUP SIGINT SIGTERM
+    
+    echo "" > "$grouppath/temp/25-default-whitelist"
+    cat "$grouppath/temp/$WCLASS" | grep -v "^#\|^$" | while read line; do
+            echo "ATTR{bInterfaceClass}==\"$line\", ENV{valid}=\"2\""  >> "$grouppath/temp/25-default-whitelist"
+    done
+    
+    echo "" > "$grouppath/temp/20-whitelist"
+    cat "$grouppath/temp/$WDEVICE" | grep -v "^#\|^$" > $TEMP
+    
+    while read validtime vid pid serial 
+    do
+            if [ -z "$serial" -a -z "$pid" ]
+    	then
+                    echo "ATTR{idVendor}==\"$vid\", ENV{valid}=\"1\""  >> "$grouppath/temp/20-whitelist"
+                    echo "ATTRS{idVendor}==\"$vid\", ENV{valid}=\"2\""  >> "$grouppath/temp/20-whitelist"
+    	elif [ -z "$serial" ]
+    	then
+                    echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ENV{valid}=\"1\""  >> "$grouppath/temp/20-whitelist"
+                    echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ENV{valid}=\"2\""  >> "$grouppath/temp/20-whitelist"
+            else
+                    echo "ATTR{idVendor}==\"$vid\", ATTR{idProduct}==\"$pid\", ATTR{serial}==\"$serial\", ENV{valid}=\"1\"" >> "$grouppath/temp/20-whitelist"
+                    echo "ATTRS{idVendor}==\"$vid\", ATTRS{idProduct}==\"$pid\", ATTRS{serial}==\"$serial\", ENV{valid}=\"2\"" >> "$grouppath/temp/20-whitelist"
+            fi
+    done < $TEMP
+    
+    for I in $grouppath/temp/[0-9]*
+    do
+    	if [ ! -z "$(echo $I | grep '10-header$')" ]
+    	then
+    		cat $I > "$grouppath/etc/$UDEVCONF"
+    	else 
+    		cat $I >> "$grouppath/etc/$UDEVCONF"
+    	fi
+    done
+    
+    #remove temp file
+    [ -f "$TEMP" ] && rm $TEMP
+
+    return 0
+}
+
+group_rules_to_member() {
+    # local variables
+    local groupid=$1
+    local hostid=$2
+
+    [ -z "$groupid" ] && usage && return 1
+
+    # second check group existance
+    group_exist $groupid || return 1
+
+    
+
+    if [ -z "$hostid" ]
+    then
+	# move all member to nogroup
+    	members=$(grep "^$groupid:" $GROUPFILE | cut -f 3 -d ":")
+
+    	if [ ! -z "$members" ]
+    	then
+    	    members=$(echo $members | tr ',' ' ')
+	    for hostid in $members
+    	    do
+    	        # copy udev rule for all members
+    	        cp -ar $GROUPHOME/etc $HOSTHOME/$hostid/
+    	    done
+    	fi
+    else
+	$LIBHOME/hmgr exist $hostid || return 1
+
+    	# copy udev rule for all members
+    	cp -ar $GROUPHOME/etc $HOSTHOME/$hostid/
+    fi
+}
+
+group_create() {
+    # local variables
+    local groupid=$1
+
+    [ -z "$groupid" ] && usage && return 1
+
+    # second step group name validation
+    group_verify $groupid || return 1
+
+    # second check group existance
+    group_exist $groupid || return 1
+
+    mkdir -p $GROUPHOME/$groupid
+    cp -ar $GROUPSKELL/group/* $GROUPHOME/$groupid
+
+    group_generate_rule $groupid
+
+    return 0
+}
+
+group_add_a_member() {
+    # local variables
+    local groupid=$1
+    local hostid=$2
+
+    [ -z "$groupid" -o -z "$hostid" ] && usage && return 1
+    [ -z "$(grep "^$groupid:" $GROUPFILE)" ] && return 1
+    
+    # remove host from old group
+    sed -i "/\(:\|,\)$hostid,/ s/$hostid,//" $GROUPFILE
+
+    # add host to new group
+    sed -i "s/\(^$groupid:.*\)/\1$hostid,/" $GROUPFILE
+
+    group_rules_to_member $groupid $hostid
+
+    return 0
+}
+
+group_delete() {
+    # local variables
+    local groupid=$1
+    local members
+
+    if [ -z "$groupid" ]
+    then
+	return 1
+    fi
+
+    # move all member to nogroup
+    members=$(grep "^$groupid:" $GROUPFILE | cut -f 3 -d ":")
+
+    if [ ! -z "$members" ]
+    then
+	members=$(echo $members | tr ',' ' ')
+    	for hostid in $members
+	do
+	    group_add_a_memeber nogroup $hostid
+	done
+    fi
+
+    # remove group from GROUPFILE
+    sed -i "/^$groupid:/ d" $GROUPFILE/$groupid
+
+    # remove group folder from $GROUPHOME
+    rm -r $GROUPHOME/$groupid
+    
+    return 0
+}
+
+case $function_select in
+    create)
+	;;
+    delete)
+	;;
+    rule-gen)
+	;;
+    add-member)
+	;;
+    verify) group_verify $1
+	;;
+    exist) group_exist $1
+	;;
+    *) echo "Usage: gmgr <create|delete|rule-gen|add-member> [arg]"
+	;;
+esac
+
+exit 0
+

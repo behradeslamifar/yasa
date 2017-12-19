@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# This script is based on IOI organization request for control on USB connections 
+# and devices. 
+# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
+# This is properitary software and cant freely distributed.
+# 
+# dmagr script for manage deployment and puppet usage in yasa
+#
+# Version number (may use later)
+version=0.1
+
+# System variable
+source /etc/default/yasa
+
+function_select=$1
+shift
+arg="$@"
+
+usage() {
+    echo "Usage: dmgr <add|del> <arg>"
+
+    return 0
+}
+
+log() {
+    local severity=$1
+    shift
+
+    if [ -z "$severity" ] 
+    then
+	return 1
+    elif [ "$severity" != "info"  -a  "$severity" != "warning" -a  "$severity" != "error" ]
+    then
+	return 1
+    fi
+
+    logger -p local0.$severity -t Yasa "$@"
+
+    return 0
+}
+puppet_list_unsign() {
+    return 0
+}
+
+puppet_list_signed() {
+    return 0
+}
+
+puppet_sign() {
+    return 0
+}
+
+puppet_update_one_node() {
+    return 0
+}
+
+puppet_update_group() {
+    return 0
+}
+
+puppet_gen_site_manifest() {
+    return 0
+}
+
+case $function_select in
+    list)
+	;;
+    list-all)
+	;;
+    sign)
+	;;
+    update-node)
+	;;
+esac
+
+exit 0
+

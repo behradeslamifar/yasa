@@ -1,9 +1,0 @@
-
-ENV{valid}=="1", ENV{valid}="", ATTR{authorized}="1", GOTO="oakusb_rules_end"
-ENV{valid}=="2", ENV{valid}="", GOTO="oakusb_rules_end"
-
-TEST=="bInterfaceClass", RUN+="/sbin/yasa auth $devpath 0"
-TEST=="authorized_default", ATTR{authorized}="1"
-
-LABEL="oakusb_rules_end"
-

@@ -1,0 +1,19 @@
+# This file deploy by Yasa. Dont edit or remove this fiel.
+#
+$PreserveFQDN on
+$WorkDirectory /var/spool/rsyslog
+
+# Queue Legacy Config
+#$ActionQueueType Disk
+#$ActionQueueMaxFileSize 100M
+#$ActionQueueFileName queue1
+#$ActionResumeRetryCount -1
+#$ActionQueueSaveOnShutdown on
+
+# Queue Config
+*.* action(type="omfwd"
+queue.type="disk"
+queue.filename="yasa"
+action.resumeRetryCount="-1"
+queue.saveonshutdown="on"
+target="<%= @yasahostname %>" Port="514" Protocol="tcp")
