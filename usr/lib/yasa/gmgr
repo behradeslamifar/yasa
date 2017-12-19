@@ -41,7 +41,7 @@ log() {
     logger -p local0.$severity -t Yasa "$@"
 
     return 0
-}
+} # log
 
 group_verify() {
     [ -z "$1" ] && usage && return 1
@@ -52,7 +52,7 @@ group_verify() {
     fi
 
     return 0
-}
+} # group_verify
 
 group_exist() {
     [ -z "$1" ] && usage && return 1
@@ -66,12 +66,13 @@ group_exist() {
     fi
 
     return 0
-}
+} # group_exist
 
 group_generate_udev_rule() {
     # create udev rule
     # local variables
     local groupid=$1
+    local grouppath=$GROUPHOME/$groupid
 
     [ -z "$groupid" ] && usage && return 1
 
@@ -119,7 +120,7 @@ group_generate_udev_rule() {
     [ -f "$TEMP" ] && rm $TEMP
 
     return 0
-}
+} # group_generate_udev_rule
 
 group_rules_to_member() {
     # local variables
@@ -153,7 +154,9 @@ group_rules_to_member() {
     	# copy udev rule for all members
     	cp -ar $GROUPHOME/etc $HOSTHOME/$hostid/
     fi
-}
+
+    return 0
+} # group_rules_to_member
 
 group_create() {
     # local variables
@@ -173,7 +176,7 @@ group_create() {
     group_generate_rule $groupid
 
     return 0
-}
+} # group_create
 
 group_add_a_member() {
     # local variables
@@ -192,7 +195,7 @@ group_add_a_member() {
     group_rules_to_member $groupid $hostid
 
     return 0
-}
+} # group_add_a_member
 
 group_delete() {
     # local variables
@@ -223,20 +226,20 @@ group_delete() {
     rm -r $GROUPHOME/$groupid
     
     return 0
-}
+} # group_delete
 
 case $function_select in
-    create)
+    create) group_create $arg || exit 1
 	;;
-    delete)
+    delete) group_delete $arg  || exit 1
 	;;
-    rule-gen)
+    rule-gen) group_generate_udev_rule $arg || exit 1
 	;;
-    add-member)
+    add-member) group_rules_to_member $arg || exit 1
 	;;
-    verify) group_verify $1
+    verify) group_verify $arg || exit 1
 	;;
-    exist) group_exist $1
+    exist) group_exist $arg || exit 1
 	;;
     *) echo "Usage: gmgr <create|delete|rule-gen|add-member> [arg]"
 	;;

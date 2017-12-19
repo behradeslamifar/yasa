@@ -21,7 +21,7 @@ usage() {
     echo "Usage: dmgr <add|del> <arg>"
 
     return 0
-}
+} # usage
 
 log() {
     local severity=$1
@@ -38,30 +38,31 @@ log() {
     logger -p local0.$severity -t Yasa "$@"
 
     return 0
-}
+} # log
+
 puppet_list_unsign() {
     return 0
-}
+} # puppet_list_unsign
 
 puppet_list_signed() {
     return 0
-}
+} # puppet_list_signed
 
 puppet_sign() {
     return 0
-}
+} # puppet_sign
 
 puppet_update_one_node() {
     return 0
-}
+} # puppet_update_one_node
 
 puppet_update_group() {
     return 0
-}
+} # puppet_update_group
 
 puppet_gen_site_manifest() {
     return 0
-}
+} # puppet_gen_site_manifest
 
 case $function_select in
     list)
