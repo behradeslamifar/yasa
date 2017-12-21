@@ -15,6 +15,8 @@ GROUPSHOME=/etc/yasa/groups
 HOSTSKELL=/etc/yasa/skell/host
 GROUPSKELL=/etc/yasa/skell/group
 
+LIBHOME=/usr/lib/yasa/
+
 # Yasa admin log. This log contain all task that happens in yasa interface
 YASA_ADMIN_LOG="/var/log/yasa-admin.log"
 
@@ -32,8 +34,3 @@ UDEVCONF="10-yasa.rules"
 # This is address of log server and server which install yasa main script
 SERVER_NAME="srv.cvak.local"
 
-# Directory that ssh keys create in
-KEYSDIR="/etc/yasa/keys"
-
-# puppet, ssh, salt
-DEPLOY_TYPE="puppet"

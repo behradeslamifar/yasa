@@ -6,7 +6,7 @@
 # This is properitary software and cant freely distributed.
 # 
 # gmagr script for manage groups in yasa
-# usage: hmgr <add|del> [arg]
+# usage: hmgr <add|del|list> [arg]
 #
 # Version number (may use later)
 version=0.1
@@ -19,7 +19,7 @@ shift
 arg="$@"
 
 usage() {
-    echo "Usage: hmgr <add|del> <arg>"
+    echo "Usage: hmgr <add|del|list> <arg>"
 
     return 0
 }
@@ -39,7 +39,16 @@ log() {
     logger -p local0.$severity -t Yasa "$@"
 
     return 0
-}
+} # log
+
+host_exist() {
+    # local variables
+    local hostid=$1
+
+    [ -z $(grep "^$hostid:" $HOSTFILE ) ] && return 1
+
+    return 0
+} # host_exist
 
 host_add() {
     # befor run this function must validate hostname and existance
@@ -56,7 +65,7 @@ host_add() {
     echo "$1:0" >> $HOSTFILE
 
     return 0
-}
+} # host_add
 
 host_delete() {
     # not need impelement, only add to no group
@@ -69,12 +78,48 @@ host_list() {
 
     return 0
 }
+
+host_deploy_stat() {
+    # local variables
+    local hostid=$1
+
+    [ -z "$hostid" ] && return 1
+
+    if [  "$(cat $HOSTFILE | grep "^$hostid" | cut -f 2 -d ":")" = "0" ]
+    then
+	echo "0"
+	return 0
+    else
+	echo "1"
+	return 1
+    fi
+} # host_deploy_stat
+
+host_toggle_stat() {
+    # local variables
+    local hostid=$1
+    local stat=$1
+
+    [ -z "$hostid" ] && return 1
+    [ -z "$stat" -o -z "$(echo $stat | grep "0\|1")" ] && return 1
+
+    sed -i "s/^$hostid:[01]$/$hostid:$stat/" $HOSTFILE
+
+    return 0
+} # host_toggle_stat
+
 case $function_select in
-    add) host_add $arg
+    add) host_add $arg || exit 1
 	;;
-    del) host_delete
+    del) host_delete $arg || exit 1
 	;;
-    list) host_list
+    list) host_list 
+	;;
+    stat) host_deploy_stat $arg || exit 1
+	;;
+    toggle) host_toggle_stat $arg || exit 1
+	;;
+    exist) host_exist $arg || exit 1
 	;;
 esac
 

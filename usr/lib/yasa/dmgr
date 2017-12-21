@@ -40,39 +40,134 @@ log() {
     return 0
 } # log
 
-puppet_list_unsign() {
+puppet_signedlist_check() {
     return 0
-} # puppet_list_unsign
+}
+
+puppet_unsingedlist_check() {
+    return 0
+}
+
+puppet_list_unsigned() {
+    # sample
+    # puppet cert list
+    #   "client1.cvak.local" (SHA256) 2C:24:20:95:59:02:2A:D9:8D:D0:0D:99:81:D8:45:56:FA:F7:BF:18:0C:57:DE:24:F0:1B:AB:F2:E9:9C:B4:A2
+    puppet cert list  | tr -s ' ' | sed 's/^ \"/\"/' | cut -f 1 -d " " | tr -d '"'
+
+    return 0
+} # puppet_list_unsigned
 
 puppet_list_signed() {
+    # puppet output sample
+    # puppet cert list -a
+    # + "laptop.cvak.local" (SHA256) F7:C3:28:FD:07:D7:3F:24:44:B0:06:DE:1C:38:6B:98:B2:0C:58:42:56:43:26:52:7A:AA:39:36:43:E2:A5:BA
+    # + "yasa.sairan.local" (SHA256) 7E:4D:DC:F9:BC:50:3D:05:B1:FD:03:10:C8:0B:AA:51:81:4E:47:68:87:8D:A0:A8:58:AD:60:57:1A:F9:50:75 (alt names: "DNS:puppet", "DNS:yasa.sairan.local")
+    puppet cert list --all | tr -s ' ' | grep "^+" | sed 's/^+ \"/\"/' | cut -f 1 -d " " | tr -d '"'
+
     return 0
 } # puppet_list_signed
 
 puppet_sign() {
+    # local variables
+    local hostid=$1
+    local response
+
+    [ -z "$hostid" ] && return 1
+
+    puppet cert sign $hostid
+
+    # get response
+    response=$?
+
+    [ "$response" != "0" ] && return 1
+     
     return 0
 } # puppet_sign
 
 puppet_update_one_node() {
-    return 0
+    # local variables
+    local hostid=$1
+    local response
+
+    [ -z "$hostid" ] && return 1
+
+    mco puppet runonce -I $hostid --no-splay
+
+    # get response
+    response=$?
+
+    if [ "$response" != "0" ]
+    then
+	$LIBHOME/hmgr toggle $hostid 1 
+	return 1
+    else
+	$LIBHOME/hmgr toggle $hostid 0
+	return 0
+    fi
 } # puppet_update_one_node
 
 puppet_update_group() {
+    # local variables
+    local groupid=$1
+
+    for hostid in $LIBHOME/gmgr members $groupid
+    do
+	mco puppet runonce -I $hostid --no-splay
+
+	# get response
+    	response=$?
+
+    	if [ "$response" != "0" ]
+    	then
+    	    $LIBHOME/hmgr toggle $hostid 1 
+    	    return 1
+    	else
+    	    $LIBHOME/hmgr toggle $hostid 0
+    	    return 0
+    	fi
+
+    done
+
     return 0
 } # puppet_update_group
 
 puppet_gen_site_manifest() {
+    # local variables
+    local sitepath=/etc/puppetlabs/code/environments/production/manifests/site.pp
+
+    if [ -z "$($LIBHOME/hmgr list)" ]
+    then
+	return 1
+    fi
+
+    echo "node" > $sitepath
+    for i in $($LIBHOME/hmgr list)
+    do
+	echo "\'$i\'," >> $sitepath
+    done
+    echo "{" >> $sitepath
+    echo "    \$yasahostname = \'$SERVER_NAME\'" >> $sitepath
+    echo "    include mcollective" >> $sitepath
+    echo "    include yasa" >> $sitepath
+    echo "}" >> $sitepath
+
     return 0
 } # puppet_gen_site_manifest
 
 case $function_select in
-    list)
+    listsigned) puppet_list_signed || exit 1
 	;;
-    list-all)
+    listunsigned) puppet_list_unsigned || exit 1
 	;;
-    sign)
+    checksign) puppet_signedlist_check $arg || exit 1
 	;;
-    update-node)
+    update-node) puppet_update_one_node $arg || exit 1
 	;;
+    update-group) puppet_update_group $arg || exit 1
+	;;
+    sitepp) puppet_gen_site_manifest || exit 1
+	;;
+    
 esac
 
 exit 0

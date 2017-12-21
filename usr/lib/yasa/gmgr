@@ -228,6 +228,16 @@ group_delete() {
     return 0
 } # group_delete
 
+group_memeber_list() {
+    # local variables
+    local groupid=$1 
+    [ -z "$groupid" ] && return 1
+
+    grep "^$groupid:" $GROUPFILE | cut -f 3 -d ":" | tr -d ' ' | tr ',' ' ' 
+
+    return 0
+} # group_memeber_list
+
 case $function_select in
     create) group_create $arg || exit 1
 	;;
@@ -235,11 +245,13 @@ case $function_select in
 	;;
     rule-gen) group_generate_udev_rule $arg || exit 1
 	;;
-    add-member) group_rules_to_member $arg || exit 1
+    add-member) group_add_a_member $arg || exit 1
 	;;
     verify) group_verify $arg || exit 1
 	;;
     exist) group_exist $arg || exit 1
+	;;
+    members) group_member_list $arg || exit 1
 	;;
     *) echo "Usage: gmgr <create|delete|rule-gen|add-member> [arg]"
 	;;
