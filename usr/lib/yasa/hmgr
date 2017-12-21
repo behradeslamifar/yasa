@@ -98,7 +98,7 @@ host_deploy_stat() {
 host_toggle_stat() {
     # local variables
     local hostid=$1
-    local stat=$1
+    local stat=$2
 
     [ -z "$hostid" ] && return 1
     [ -z "$stat" -o -z "$(echo $stat | grep "0\|1")" ] && return 1

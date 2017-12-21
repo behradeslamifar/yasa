@@ -32,7 +32,7 @@ host_add() {
     # not needed implement yet
 
     # save list of signed hosts
-    dialog --backtitle "Client Management" --title " Clients List " --menu "Choose a hostname to add Yasa" 11 60 10 $(for hostid in $($LIBHOME/dmgr listsigned ); do $LIBHOME/hmgr exist $hostid && echo -n "$hostid ${hostid%%.*} "; done) 2> $output
+    dialog --backtitle "Client Management" --title " Clients List " --menu "Choose a hostname to add Yasa" 11 60 10 $(for hostid in $($LIBHOME/dmgr listsigned ); do $LIBHOME/hmgr exist $hostid || echo -n "$hostid ${hostid%%.*} "; done) 2> $output
 
     # get response
     response=$?
@@ -40,6 +40,8 @@ host_add() {
     # if user press cancel, escape 
     if [ "$response" == "1" -o "$response" == "255" -o -z "$(<$output)" ]
     then
+	    dialog --backtitle "Client Management" --title "Error Message" --msgbox "Did not find any host" 6 60 
+
             # remove temp file             
             [ -f "$output" ] && rm $output
 
@@ -64,7 +66,17 @@ host_add() {
 
     $LIBHOME/gmgr add-member nogroup $hostid
 
-    dialog --backtitle "Client Management" --title "Add Host" --msgbox "$hostid added successfully" 6 40
+    $LIBHOME/dmgr update-node $hostid
+
+    # get response
+    response=$?
+
+    if [ "$response" = "0" ]
+    then
+    	dialog --backtitle "Client Management" --title "Add Host" --msgbox "$hostid added successfully" 6 40
+    else
+    	dialog --backtitle "Client Management" --title "Add Host" --msgbox "$hostid didnt deply successfully. Try force deploy later" 6 60
+    fi
 
     # remove temp file
     [ -f "$output" ] && rm $output

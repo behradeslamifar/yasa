@@ -55,12 +55,15 @@ group_verify() {
 } # group_verify
 
 group_exist() {
-    [ -z "$1" ] && usage && return 1
+    # local variables
+    local groupid=$1 
 
-    if [ -z "$(grep "^$1:" $GROUPFILE)" ]
+    [ -z "$groupid" ] && usage && return 1
+
+    if [ -z "$(grep "^$groupid:" $GROUPFILE)" ]
     then
 	return 1
-    elif [ -d "$GROUPHOME/$1" ]
+    elif [ -d "$GROUPSHOME/$1" ]
     then
 	return 1
     fi
@@ -72,7 +75,7 @@ group_generate_udev_rule() {
     # create udev rule
     # local variables
     local groupid=$1
-    local grouppath=$GROUPHOME/$groupid
+    local grouppath=$GROUPSHOME/$groupid
 
     [ -z "$groupid" ] && usage && return 1
 
@@ -130,9 +133,7 @@ group_rules_to_member() {
     [ -z "$groupid" ] && usage && return 1
 
     # second check group existance
-    group_exist $groupid || return 1
-
-    
+    #group_exist $groupid || return 1
 
     if [ -z "$hostid" ]
     then
@@ -145,14 +146,16 @@ group_rules_to_member() {
 	    for hostid in $members
     	    do
     	        # copy udev rule for all members
-    	        cp -ar $GROUPHOME/etc $HOSTHOME/$hostid/
+		mkdir -p $HOSTSHOME/$hostid/ || true
+    	        cp -ar $GROUPSHOME/$groupid/etc $HOSTSHOME/$hostid/
     	    done
     	fi
     else
 	$LIBHOME/hmgr exist $hostid || return 1
 
     	# copy udev rule for all members
-    	cp -ar $GROUPHOME/etc $HOSTHOME/$hostid/
+	mkdir -p $HOSTSHOME/$hostid/ || true
+    	cp -ar $GROUPSHOME/$groupid/etc $HOSTSHOME/$hostid/
     fi
 
     return 0
@@ -170,8 +173,8 @@ group_create() {
     # second check group existance
     group_exist $groupid || return 1
 
-    mkdir -p $GROUPHOME/$groupid
-    cp -ar $GROUPSKELL/group/* $GROUPHOME/$groupid
+    mkdir -p $GROUPSHOME/$groupid
+    cp -ar $GROUPSKELL/group/* $GROUPSHOME/$groupid
 
     group_generate_rule $groupid
 
@@ -222,8 +225,8 @@ group_delete() {
     # remove group from GROUPFILE
     sed -i "/^$groupid:/ d" $GROUPFILE/$groupid
 
-    # remove group folder from $GROUPHOME
-    rm -r $GROUPHOME/$groupid
+    # remove group folder from $GROUPSHOME
+    rm -r $GROUPSHOME/$groupid
     
     return 0
 } # group_delete

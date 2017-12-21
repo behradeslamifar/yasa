@@ -4,8 +4,8 @@ set -e
 
 puppet_modules_dir=/etc/puppetlabs/code/environments/production/modules/
 
-chmod 755 /etc/yasa/{group,puppet,skell}
-chmod 755 /etc/yasa/skell/{etc,group,temp}
+chmod 755 /etc/yasa/{groups,hosts,puppet,skell}
+chmod 755 /etc/yasa/skell/{group,host}
 chmod 755 /etc/yasa/puppet/{files,manifests,templates}
 
 if [ -d "$puppet_modules_dir" ]
@@ -50,14 +50,14 @@ else
 fi
 
 # genrate ssh key for yasaclient deployment
-if [ ! -f "/etc/yasa/keys/server" -a ! -f "/etc/yasa/keys/server.pub" ]
-then
-    echo "Generating SSH keys ..."
-    echo "..."
-    ssh-keygen -f /etc/yasa/keys/server -N '' > /dev/null 2>&1
-    echo "SSH keys generated successfuly ..."
-else
-    echo "Key(s) exist. if you want create new keys, try from Yasa Management and Utility Menu"
-fi
+#if [ ! -f "/etc/yasa/keys/server" -a ! -f "/etc/yasa/keys/server.pub" ]
+#then
+#    echo "Generating SSH keys ..."
+#    echo "..."
+#    ssh-keygen -f /etc/yasa/keys/server -N '' > /dev/null 2>&1
+#    echo "SSH keys generated successfuly ..."
+#else
+#    echo "Key(s) exist. if you want create new keys, try from Yasa Management and Utility Menu"
+#fi
 
 exit 0

@@ -15,7 +15,7 @@ GROUPSHOME=/etc/yasa/groups
 HOSTSKELL=/etc/yasa/skell/host
 GROUPSKELL=/etc/yasa/skell/group
 
-LIBHOME=/usr/lib/yasa/
+LIBHOME=/usr/lib/yasa
 
 # Yasa admin log. This log contain all task that happens in yasa interface
 YASA_ADMIN_LOG="/var/log/yasa-admin.log"
