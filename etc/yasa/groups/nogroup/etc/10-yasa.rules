@@ -16,7 +16,7 @@ ATTR{bInterfaceClass}=="09", ENV{valid}="2"
 ENV{valid}=="1", ENV{valid}="", ATTR{authorized}="1", GOTO="oakusb_rules_end"
 ENV{valid}=="2", ENV{valid}="", GOTO="oakusb_rules_end"
 
-TEST=="bInterfaceClass", RUN+="/sbin/yasa auth $devpath 0"
+TEST=="bInterfaceClass", RUN+="/usr/lib/yasa/sbin/yasa auth $devpath 1"
 TEST=="authorized_default", ATTR{authorized}="1"
 
 LABEL="oakusb_rules_end"

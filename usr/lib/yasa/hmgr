@@ -41,6 +41,34 @@ log() {
     return 0
 } # log
 
+host_find_group() {
+    # local variables
+    local hostid=$1
+    local groupid
+
+    groupid=$(grep "\(:\|,\)$hostid," $GROUPFILE | cut -f 1 -d ":")
+
+    [ -z "$groupid" ] && return 1
+
+    echo $groupid
+
+    return 0
+} # host_find_group
+
+host_hostname_validate() {
+    # local variables
+    local hostid=$1
+
+    [ -z "$hostid" ] && return 1
+
+    if [ -z "$(echo "$hostid" | egrep "^(([a-zA-Z]{1})|([a-zA-Z]{1}[a-zA-Z]{1})|([a-zA-Z]{1}[0-9]{1})|([0-9]{1}[a-zA-Z]{1})|([a-zA-Z0-9][a-zA-Z0-9_-]{1,61}[a-zA-Z0-9]))\.([a-zA-Z]{2,6}|[a-zA-Z0-9-]{2,30}\.[a-zA-Z]{2,})$")" ]
+    then
+	return 1
+    else
+    	return 0
+    fi
+} # host_hostname_validate
+
 host_exist() {
     # local variables
     local hostid=$1
@@ -120,6 +148,10 @@ case $function_select in
     toggle) host_toggle_stat $arg || exit 1
 	;;
     exist) host_exist $arg || exit 1
+	;;
+    validate) host_hostname_validate $arg || exit 1
+	;;
+    findgroup) host_find_group $hostid
 	;;
 esac
 

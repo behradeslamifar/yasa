@@ -43,7 +43,13 @@ log() {
     return 0
 } # log
 
-group_verify() {
+group_list() {
+    cut -f 1 -d":" $GROUPFILE | grep -v "^#\|^$"
+
+    return 0
+} # group_list
+
+group_name_validate() {
     [ -z "$1" ] && usage && return 1
 
     if [ -z "$(echo "$1" | egrep "[a-z0-9]{3,100}")" ]
@@ -52,7 +58,7 @@ group_verify() {
     fi
 
     return 0
-} # group_verify
+} # group_name_validate
 
 group_exist() {
     # local variables
@@ -61,9 +67,6 @@ group_exist() {
     [ -z "$groupid" ] && usage && return 1
 
     if [ -z "$(grep "^$groupid:" $GROUPFILE)" ]
-    then
-	return 1
-    elif [ -d "$GROUPSHOME/$1" ]
     then
 	return 1
     fi
@@ -168,15 +171,17 @@ group_create() {
     [ -z "$groupid" ] && usage && return 1
 
     # second step group name validation
-    group_verify $groupid || return 1
+    group_name_validate $groupid || return 1
 
     # second check group existance
-    group_exist $groupid || return 1
+    group_exist $groupid && return 1
 
     mkdir -p $GROUPSHOME/$groupid
-    cp -ar $GROUPSKELL/group/* $GROUPSHOME/$groupid
+    cp -ar $GROUPSKELL/* $GROUPSHOME/$groupid
 
-    group_generate_rule $groupid
+    echo "$groupid:0:" >> $GROUPFILE
+
+    group_generate_udev_rule $groupid
 
     return 0
 } # group_create
@@ -231,15 +236,61 @@ group_delete() {
     return 0
 } # group_delete
 
-group_memeber_list() {
+group_member_list() {
     # local variables
     local groupid=$1 
+
     [ -z "$groupid" ] && return 1
 
     grep "^$groupid:" $GROUPFILE | cut -f 3 -d ":" | tr -d ' ' | tr ',' ' ' 
 
     return 0
-} # group_memeber_list
+} # group_member_list
+
+group_membership() {
+    # local variables
+    local groupid=$1
+    local hostid=$2
+    local stat=$(grep "^$groupid:" GROUPFILE | grep "\(:\|,\)$hostid,")
+
+    if [ -z "$stat" ]
+    then
+	echo "off"
+	return 1
+    else
+	echo "on"
+	return 0
+    fi
+} # group_membership
+
+group_deploy_stat() {
+    # local variables
+    local groupid=$1
+
+    [ -z "$groupid" ] && return 1
+
+    if [  "$(cat $GROUPFILE | grep "^$groupid" | cut -f 2 -d ":")" = "0" ]
+    then
+        echo "0"
+        return 0
+    else
+        echo "1"
+        return 1
+    fi 
+} # group_deploy_stat
+
+group_toggle_stat() {
+    # local variables
+    local groupid=$1
+    local stat=$2
+
+    [ -z "$groupid" ] && return 1
+    [ -z "$stat" -o -z "$(echo $stat | grep "0\|1")" ] && return 1
+
+    sed -i "s/^$groupid:[01]$/$groupid:$stat/" $GROUPFILE
+
+    return 0
+} # group_toggle_stat
 
 case $function_select in
     create) group_create $arg || exit 1
@@ -250,11 +301,19 @@ case $function_select in
 	;;
     add-member) group_add_a_member $arg || exit 1
 	;;
-    verify) group_verify $arg || exit 1
+    validate) group_name_validate $arg || exit 1
 	;;
     exist) group_exist $arg || exit 1
 	;;
     members) group_member_list $arg || exit 1
+	;;
+    membership) group_membership $arg || exit 1
+	;;
+    list) group_list
+	;;
+    stat) group_deploy_stat $arg || exit 1
+	;;
+    toggle) group_toggle_stat $arg || exit 1
 	;;
     *) echo "Usage: gmgr <create|delete|rule-gen|add-member> [arg]"
 	;;
