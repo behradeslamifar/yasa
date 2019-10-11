@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# This is TUI functions. Thease functions only run with bash
-# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
-# This is properitary software and cant freely distributed.
-
 host_mgmt_menu() {
 	# Menu input
 	local output=$(mktemp /tmp/usb.XXXXXXXX)

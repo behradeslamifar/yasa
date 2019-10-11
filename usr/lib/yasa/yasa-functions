@@ -2,8 +2,6 @@
 
 # This is file contain main function of yasa, that run in background 
 # with yasa-cli and yasa-web
-# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
-# This is properitary software and cant freely distributed.
 
 host_add_generate_puppet_config() {
     ## generate new site.pp for puppet configuration and reload puppet

@@ -1,15 +1,5 @@
 #!/bin/bash
 
-# This script is based on IOI organization request for control on USB connections 
-# and devices. 
-# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
-# This is properitary software and cant freely distributed.
-# Version number (may use later)
-#
-# This is TUI functions. Thease functions only run with bash
-# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
-# This is properitary software and cant freely distributed.
-
 # Disable ctrl+c in program
 trap "" SIGINT
 
@@ -38,14 +28,20 @@ host_add() {
     response=$?
 
     # if user press cancel, escape 
-    if [ "$response" == "1" -o "$response" == "255" -o -z "$(<$output)" ]
+    if [ "$response" == "255" -o -z "$(<$output)" ]
     then
-	    dialog --backtitle "Client Management" --title "Error Message" --msgbox "Did not find any host" 6 60 
+	dialog --backtitle "Client Management" --title "Error Message" --msgbox "Did not find any host" 6 60 
 
-            # remove temp file             
-            [ -f "$output" ] && rm $output
+        # remove temp file             
+        [ -f "$output" ] && rm $output
 
-            return 1
+        return 1
+    elif [ "$response" = "1" ]
+    then
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+        return 0
     fi
 
     # get hostname
@@ -101,14 +97,20 @@ host_disable() {
     response=$?
 
     # if user press cancel, escape 
-    if [ "$response" == "1" -o "$response" == "255" -o -z "$(<$output)" ]
+    if [ "$response" == "255" -o -z "$(<$output)" ]
     then
-	    dialog --backtitle "Client Management" --title "Error Message" --msgbox "Did not find any host" 6 60 
+	dialog --backtitle "Client Management" --title "Error Message" --msgbox "Did not find any host" 6 60 
 
-            # remove temp file             
-            [ -f "$output" ] && rm $output
+        # remove temp file             
+        [ -f "$output" ] && rm $output
 
-            return 1
+        return 1
+    elif [ "$reponse" = "1" ]
+    then
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+        return 0
     fi
 
     # get hostname
@@ -139,9 +141,58 @@ host_disable() {
     return 0
 } # host_disable
 
-host_sync() {
+failed_host() {
+    # local variables
+    local response
+    local failed
+    local output=$(mktemp /tmp/usb.XXXXXXXX)
+    
+    # trap and delete temp file
+    trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+    trap "" SIGINT
+ 
+    dialog --backtitle "Deployment Management" \
+	   --title "[ Failed Host List ]" \
+	   --checklist "In this list all host be exist but failed host was selected automatically.\nYou select new one to force YasaClient sync with server." 13 60 22 $(for hostid in $($LIBHOME/hmgr list); do echo -n "$hostid ${hostid%%.*} $($LIBHOME/hmgr stat $hostid >/dev/null && echo "off" || echo "on") "; done) 2> $output
+
+    # get response
+    response=$?
+
+    # if user press cancel, escape 
+    if [ "$response" == "255"  ]
+    then
+	dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not find any hosts" 6 60 
+
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+        return 1
+    elif [ "$response" == "1" ]
+    then
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
+    elif [ -z "$(<$output)" ]
+    then
+	dialog --backtitle "Group Management" --title "Error Message" --msgbox "Didnt any host selected" 6 60 
+
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
+    fi
+
+    for hostid in $(<$output)
+    do
+	$LIBHOME/dmgr update-node $hostid || failed=$failed$hostid,
+    done
+
+    dialog --msgbox "Process complete successfully.\nFailed hosts to deploy is: $failed" 6 60
+
     return 0
-} # host_sync
+} # faild_host
+
 
 menu_host() {
     # Menu input
@@ -163,8 +214,8 @@ menu_host() {
         Choose the TASK" 16 65 9 \
     	1 "Add a Host" \
     	2 "Disable Host" \
-    	6 "Sync Clients" \
-        Exit "Return to Main Menu" 2>"${output}"
+	3 "Failed Host" \
+        Exit "Return to Main Menu" 2> $output
     
     	# get response
     	response=$?
@@ -182,7 +233,7 @@ menu_host() {
         case $(<$output) in
     	    1) host_add;;
     	    2) host_disable;;
-    	    3) host_sync;;
+	    3) failed_host;;
             Exit) echo "Bye"; break;;
         esac
     done	
@@ -193,7 +244,200 @@ menu_host() {
     return 0
 } # menu_host
 
+group_show_members() {
+    # temp file for menu output
+    local output=$(mktemp /tmp/usb.XXXXXXX)
+    
+    # trap and delete temp file
+    trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+    trap "" SIGINT
+ 
+    # local variables
+    groupid=$1
+    $LIBHOME/gmgr members $groupid | tr ' ' '\n' > $output
+
+    if [ -z "$(<$output)" ]
+    then
+	dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not find any members" 6 60 
+
+	# remove temp file             
+    	[ -f "$output" ] && rm $output
+
+    	return 0
+    fi
+
+    dialog --backtitle "Group Management" --title "Group Member(s)" --textbox $output 10 80
+
+    # remove temp file             
+    [ -f "$output" ] && rm $output
+
+    return 0
+} # group_show_members
+
+group_show_class() {
+    # temp file for menu output
+    local output=$(mktemp /tmp/usb.XXXXXXX)
+    
+    # trap and delete temp file
+    trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+    trap "" SIGINT
+    
+    # local variable
+    local groupid=$1
+    local response
+    
+    # Convert to human readable text
+    sed -e 's/00/00h Use class information in the Interface Descriptors/' \
+        -e 's/00/00h Use class information in the Interface Descriptors/' \
+        -e 's/01/01h Audio/' \
+        -e 's/02/02h Communications and CDC Control/' \
+        -e 's/03/03h HID (Human Interface Device)/' \
+        -e 's/05/05h Physical/' \
+        -e 's/06/06h Image/' \
+        -e 's/07/07h Printer/' \
+        -e 's/08/08h Mass Storage/' \
+        -e 's/09/09h Hub/' \
+        -e 's/0A/0Ah CDC-Data/' \
+        -e 's/0B/0Bh Smart Card/' \
+        -e 's/0D/0Dh Content Security/' \
+        -e 's/0E/0Eh Video/' \
+        -e 's/0F/0Fh Personal Healthcare/' \
+        -e 's/10/10h Audio\/Video Devices/' \
+        -e 's/11/11h Billboard Device Class/' \
+        -e 's/12/12h USB Type-C Bridge Class/' \
+        -e 's/DC/DCh Diagnostic Device/' \
+        -e 's/E0/E0h Wireless Controller/' \
+        -e 's/EF/EFh Miscellaneous/' \
+        -e 's/FF/FEh Application Specific/' \
+        -e 's/FF/FFh Vendor Specific/'  $GROUPSHOME/$groupid/temp/$WCLASS | \
+    grep -v "^$" > $output
+
+    if [ -z "$(<$output)" ]
+    then
+    	echo "There is not exist any class in white list" > $output
+    fi
+    dialog --backtitle "Group Management" --title "Whitelist Class" --textbox $output 10 80
+    
+    # remove temp file
+    [ -f "$output" ] && rm $output
+    			
+    return 0
+} # group_show_class
+
+group_show_device() {
+    # temp file for menu output
+    local output=$(mktemp /tmp/usb.XXXXXXX)
+    
+    # trap and delete temp file
+    trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+    trap "" SIGINT
+    
+    # local variable
+    local groupid=$1
+    local response
+ 
+    # change unix time to normal time
+    sed 's|\(^[1-9][0-9]*\)\( .*\)|date --date=@\1 +%Y/%m/%d-%H:%M"\2"|e' $GROUPSHOME/$groupid/temp/$WDEVICE | cat -s > $output
+    if [ -z "$(<$output)" ]
+    then
+    	echo "There is not exist any device in white list" > $output
+    fi
+    
+    dialog --backtitle "$backtitle" --title "White List Device(s)" --textbox $output 10 80
+    
+    # remove temp file             
+    [ -f "$output" ] && rm $output
+
+    return 0
+} # group_show_device
+
 groups() {
+    # local variables
+    
+    # temp file for menu output
+    local output=$(mktemp /tmp/usb.XXXXXXX)
+    
+    # trap and delete temp file
+    trap "rm $output; exit" SIGHUP SIGINT SIGTERM
+    trap "" SIGINT
+
+    # main loop
+    while true
+    do
+	# group list
+	dialog --backtitle "Group Management" --title " Group List " --menu "Choose a group name to add Yasa" 11 60 10 $(for groupid in $($LIBHOME/gmgr list); do echo -n "$groupid $groupid "; done) 2> $output
+
+    	# get response
+    	response=$?
+
+    	# if user press cancel, escape 
+    	if [ "$response" == "255" ]
+    	then
+    	    dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not find any group" 6 60 
+
+    	    # remove temp file             
+    	    [ -f "$output" ] && rm $output
+
+    	    return 1
+    	elif [ "$response" == "1" ]
+    	then
+    	    # remove temp file             
+    	    [ -f "$output" ] && rm $output
+
+    	    return 0
+	elif [ -z "$(<$output)" ]
+	then
+    	    dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not selected any group" 6 60 
+
+    	    # remove temp file             
+    	    [ -f "$output" ] && rm $output
+
+	    return 0
+    	fi
+
+	# get hostname
+	groupid=$(<$output)
+
+	while true
+    	do
+    	    # choose add or delete device
+	    dialog --backtitle "Group Management" --title "[ G R O U P - M O D I F Y ]" \
+    	    --menu "Choose what you want to do in \"$groupid\" group.\n\
+    	    Press cancel to exit from this menu." 12 60 4 \
+    	    1 "Members" \
+    	    2 "Permitted USB Classes" \
+    	    3 "Permitted Devices" \
+    	    4 "Back to Main Menu" 2> $output
+    		
+	    # get response
+    	    response=$?
+
+    	    # if user enter cancel or press esc
+    	    if [ "$response" == "1" -o "$response" == "255" ]
+    	    then
+    	       # remove temp file
+    	       [ -f "$output" ] && rm $output
+
+    	           echo "" > $tempdevice
+    	       echo "" > $tempclass
+
+    		   return 0
+	    fi
+
+	    # make decision
+    	    case $(<$output) in
+    	       1) group_show_members $groupid;;
+    	       2) group_show_class $groupid;;
+    	       3) group_show_device $groupid ;;
+    	       4) break ;;
+	    esac
+    	done
+ 
+    done
+
+    # remove temp file             
+    [ -f "$output" ] && rm $output
+
     return 0
 } # groups
 
@@ -264,7 +508,7 @@ group_delete() {
     response=$?
 
     # if user press cancel, escape 
-    if [ "$response" == "1" -o "$response" == "255" -o -z "$(<$output)" ]
+    if [ "$response" == "255" ]
     then
 	dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not find any group" 6 60 
 
@@ -272,6 +516,20 @@ group_delete() {
         [ -f "$output" ] && rm $output
 
         return 1
+    elif [ "$response" == "1" ]
+    then
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+        return 0
+    elif [ -z "$(<$output)" ]
+    then
+        dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not selected any group" 6 60 
+
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
     fi
 
     # get group name
@@ -318,7 +576,7 @@ group_members() {
     response=$?
 
     # if user press cancel, escape 
-    if [ "$response" == "1" -o "$response" == "255" -o -z "$(<$output)" ]
+    if [ "$response" == "255" ]
     then
 	dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not find any group" 6 60 
 
@@ -326,6 +584,20 @@ group_members() {
         [ -f "$output" ] && rm $output
 
         return 1
+    elif [ "$response" == "1" ]
+    then
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
+    elif [ -z "$(<$output)" ]
+    then
+        dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not selected any group" 6 60 
+
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
     fi
 
     # get hostname
@@ -334,20 +606,34 @@ group_members() {
 
     /usr/bin/dialog --backtitle "Group Management" \
 		    --title "[ Client List ]" \
-		    --checklist "Choose choose hosts for add to new group" 13 60 22 $(for hostid in $($LIBHOME/gmgr members $groupid); do echo -n "$hostid ${hostid%%.*} $($LIBHOME/gmgr membership $groupid $hostid) "; done) 2> $output
+		    --checklist "Choose choose hosts for add to new group" 13 60 22 $(for hostid in $($LIBHOME/hmgr list); do echo -n "$hostid ${hostid%%.*} $($LIBHOME/gmgr membership $groupid $hostid) "; done) 2> $output
 
     # get response
     response=$?
 
     # if user press cancel, escape 
-    if [ "$response" == "1" -o "$response" == "255" -o -z "$(<$output)" ]
+    if [ "$response" == "255" ]
     then
-	#dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not find any group" 6 60 
+	dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not find any hosts" 6 60 
 
         # remove temp file             
         [ -f "$output" ] && rm $output
 
         return 1
+    elif [ "$response" == "1" ]
+    then
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
+    elif [ -z "$(<$output)" ]
+    then
+        dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not selected any hosts" 6 60 
+
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
     fi
 
     for hostid in $(<$output)
@@ -369,10 +655,10 @@ class_existence_check() {
         ## This function check existance of class in whitelist
         ## $1 -> host,group , $2 -> hostid,groupid 
         local groupid=$1
-        local classid="$3"
+        local classid=$2
 
         # return 1 if device not added befor
-        [ -z $(grep "$classid" $GROUPHOME/$groupid/temp/$WCLASS | cut -f 1 -d " ") ] && echo "off" && return 1
+        [ -z $(grep -i "$classid" $GROUPSHOME/$groupid/temp/$WCLASS) ] && echo "off" && return 1
 
         # return 0 if device already exist 
         echo "on"       
@@ -385,7 +671,7 @@ group_modify_class() {
     # local variables
     local groupid=$1
     local id=$groupid
-    local tempclass=$GROUPHOME/$groupid/temp/class.allow.tmp
+    local tempclass=$GROUPSHOME/$groupid/temp/class.allow.tmp
     local output=$(mktemp /tmp/usb.XXXXXXXX)
 
     # trap and delete temp file
@@ -451,7 +737,7 @@ group_modify_device() {
     # local variables
     local groupid=$1
     local keyword
-    local tempdevice=$GROUPHOME/$groupid/temp/device.allow.tmp
+    local tempdevice=$GROUPSHOME/$groupid/temp/dev.allow.tmp
     local log_line_number
     local validtime
     local currenttime
@@ -616,7 +902,7 @@ group_delete_device() {
     
     # local variable
     local groupid=$1
-    local tempdevice=$GROUPHOME/$groupid/temp/device.allow.tmp
+    local tempdevice=$GROUPSHOME/$groupid/temp/dev.allow.tmp
     local backtitle
     local device
     local count
@@ -706,10 +992,10 @@ group_save_change() {
 
 	if [ "$response" == "0" ]   
 	then      
-	    cat $GROUPHOME/$groupid/temp/device.allow.tmp > $GROUPHOME/$groupid/temp/device.allow 
-	    cat $GROUPHOME/$groupid/temp/class.allow.tmp >$GROUPHOME/$groupid/temp/class.allow 
-	    echo "" > $GROUPHOME/$groupid/temp/class.allow.tmp
-	    echo "" > $GROUPHOME/$groupid/temp/device.allow.tmp
+	    cat $GROUPSHOME/$groupid/temp/dev.allow.tmp > $GROUPSHOME/$groupid/temp/dev.allow 
+	    cat $GROUPSHOME/$groupid/temp/class.allow.tmp >$GROUPSHOME/$groupid/temp/class.allow 
+	    echo "" > $GROUPSHOME/$groupid/temp/class.allow.tmp
+	    echo "" > $GROUPSHOME/$groupid/temp/dev.allow.tmp
 
 	    $LIBHOME/gmgr rule-gen $groupid
 
@@ -745,7 +1031,7 @@ group_modify() {
     response=$?
 
     # if user press cancel, escape 
-    if [ "$response" == "1" -o "$response" == "255" -o -z "$(<$output)" ]
+    if [ "$response" == "255" ]
     then
 	dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not find any group" 6 60 
 
@@ -753,26 +1039,40 @@ group_modify() {
         [ -f "$output" ] && rm $output
 
         return 1
+    elif [ "$response" == "1" ]
+    then
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
+    elif [ -z "$(<$output)" ]
+    then
+        dialog --backtitle "Group Management" --title "Error Message" --msgbox "Did not selected any group" 6 60 
+
+        # remove temp file             
+        [ -f "$output" ] && rm $output
+
+	return 0
     fi
 
     # get hostname
     groupid=$(<$output)
 
-    local tempdevice=$GROUPHOME/$groupid/temp/device.allow.tmp
-    local tempclass=$GROUPHOME/$groupid/temp/class.allow.tmp
+    local tempdevice=$GROUPSHOME/$groupid/temp/dev.allow.tmp
+    local tempclass=$GROUPSHOME/$groupid/temp/class.allow.tmp
 
-    cat $GROUPHOME/$groupid/temp/device.allow > $tempdevice
-    cat $GROUPHOME/$groupid/temp/class.allow > $tempclass
+    cat $GROUPSHOME/$groupid/temp/dev.allow > $tempdevice
+    cat $GROUPSHOME/$groupid/temp/class.allow > $tempclass
 
     while true
     do
 	# choose add or delete device
     	dialog --backtitle "Group Management" --title "[ G R O U P - M O D I F Y ]" \
     	--menu "Choose what you want to do in \"$groupid\" group.\n\
-    	Press cancel to exit from this menu." 12 60 3 \
+    	Press cancel to exit from this menu." 12 60 4 \
     	1 "Modify USB Classes" \
     	2 "Add Device" \
-    	3 "Delete Device" \ 
+    	3 "Delete Device" \
 	4 "Back to Main Menu (save/discard)" 2> $output
     	
     	# get response
@@ -795,7 +1095,7 @@ group_modify() {
     	   1) group_modify_class $groupid;;
     	   2) group_modify_device $groupid;;
     	   3) group_delete_device $groupid ;;
-	   4) group_save_change $groupid  ;;
+	   4) group_save_change $groupid; break ;;
     	esac
     done
     
@@ -964,10 +1264,9 @@ menu_other() {
     return 0
 } # menu_other
 
-
 main_menu() {
     # Menu input
-    output=$(mktemp /tmp/usb.XXXXXXXX)
+    local output=$(mktemp /tmp/usb.XXXXXXXX)
     local response
     
     # trap and delete temp file
@@ -985,7 +1284,8 @@ main_menu() {
         Choose the TASK" 16 65 5 \
     	1 "Client Management" \
     	2 "Group Management" \
-        4 "Other" \
+	4 "Failed Host" \
+        5 "Other" \
         Exit "Exit and Logout" 2>"$output"
     
         #3 "Reports" \
@@ -1007,7 +1307,8 @@ main_menu() {
     	    1) menu_host;;
     	    2) menu_group;;
             3) menu_report;;
-            4) menu_other;;
+	    4) failed_host ;;
+            5) menu_other;;
             Exit) echo "Bye"; break;;
         esac
     done

@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# This script is based on IOI organization request for control on USB connections 
-# and devices. 
-# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
-# This is properitary software and cant freely distributed.
-# 
 # gmagr script for manage groups in yasa
 # usage: gmgr <create|delete|rule-gen|add-member> [arg]
 #
@@ -228,7 +223,7 @@ group_delete() {
     fi
 
     # remove group from GROUPFILE
-    sed -i "/^$groupid:/ d" $GROUPFILE/$groupid
+    sed -i "/^$groupid:/ d" $GROUPFILE
 
     # remove group folder from $GROUPSHOME
     rm -r $GROUPSHOME/$groupid

@@ -1,0 +1,117 @@
+#!/bin/bash
+
+# check dependencies
+echo "Yasa Dependencies: dialog, sed, coreutils, openssh-client, puppetserver, puppet-agent, rsyslog"
+read -n 1
+
+# If yasa run as root user
+echo -n "Run as root user ... "
+if [ "$(id -u)" != "0" ]
+then
+	echo -e "\e[91mfail\e[0m"
+	exit 1
+fi
+echo -e "\e[92mpass\e[0m"
+
+## check puppetmaster is installed
+#echo -en "Dependency check \"Puppet Master\" ... "
+#
+#result=$(dpkg -l puppetserver 2> /dev/null | grep "^ii")
+#if [ -z "$result" ]
+#then
+#	echo -e "\e[91mfail\e[0m"
+#fi
+#echo -e "\e[92mpass\e[0m"
+
+# sed
+echo -en "Dependency check \"sed\" ... "
+
+#result=$(dpkg -l sed | grep "^ii")
+result=$(which sed)
+if [ -z "$result" ]
+then
+	echo -e "\e[91mfail\e[0m"
+	exit 1
+fi
+echo -e "\e[92mpass\e[0m"
+
+# dialog
+echo -en "Dependency check \"dialog\" ... "
+
+#result=$(dpkg -l dialog | grep "^ii")
+result=$(which dialog)
+if [ -z "$result" ]
+then
+	echo -e "\e[91mfail\e[0m"
+	exit 1
+fi
+echo -e "\e[92mpass\e[0m"
+
+if [ -d /etc/yasa -a -e /sbin/yasa-tui ] 
+then
+    echo "Yasa already installed. Please remove old version then try again"
+    
+    exit 1
+fi
+
+# create folder structure
+echo -n "Create folder structure ... "
+[ ! -d /usr/lib/yasa/ ] && mkdir -p /usr/lib/yasa/sbin
+[ ! -d /etc/lib/yasa ] && mkdir -p /etc/yasa/{skell,hosts,groups,puppet}
+
+echo -e "\e[92mpass\e[0m"
+
+echo -n "Copy files ... "
+[ ! -f /etc/yasa/host ] && cp etc/yasa/host /etc/yasa/
+[ ! -f /etc/yasa/group ] && cp etc/yasa/group /etc/yasa/
+
+cp -rf etc/yasa/groups/nogroup /etc/yasa/groups/
+cp -rf etc/yasa/skell/* /etc/yasa/skell/
+cp -rf etc/default/yasa /etc/default/yasa
+cp -rf usr/lib/yasa/* /usr/lib/yasa/
+cp -f sbin/yasa-tui /sbin/
+
+echo -e "\e[92mpass\e[0m"
+
+echo -n "Rsyslog config and restarte ... " 
+cp etc/rsyslog.d/yasa-server.conf /etc/rsyslog.d/
+cp etc/logrotate.d/yasa /etc/logrotate.d/
+
+sed -i 's/#module(load=\"imudp\")/module(load=\"imudp\")/' /etc/rsyslog.conf
+sed -i 's/#input(type=\"imudp\" port=\"514\")/#input(type=\"imudp\" port=\"514\")/' /etc/rsyslog.conf
+
+sed -i 's/#$ModLoad imudp/$ModLoad imudp/' /etc/rsyslog.conf
+sed -i 's/#$UDPServerRun 514/$UDPServerRun 514/' /etc/rsyslog.conf
+
+systemctl restart rsyslog
+
+response=$?
+
+if [ "$response" = "0" ]
+then
+    echo -e "\e[92mpass\e[0m"
+else
+    echo -e "\e[91mfail\e[0m"
+    exit 1
+fi
+
+echo -n "Copy crontab config ... "
+cp etc/cron.d/yasa /etc/cron.d/
+
+echo -e "\e[92mpass\e[0m"
+
+if [ ! -l /etc/yasa/puppet/files/hosts ] 
+then
+    rm -r /etc/yasa/puppet/files/hosts
+    ln -s /etc/yasa/hosts /etc/yasa/puppet/files/hosts
+fi
+
+if [ ! -l /etc/puppetlabs/code/environments/production/modules/yasa ]
+then
+    rm -r /etc/puppetlabs/code/environments/production/modules/yasa
+    ln -s /etc/yasa/puppet /etc/puppetlabs/code/environments/production/modules/yasa
+fi
+
+echo "Installation complete"
+
+exit 0

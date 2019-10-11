@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# This script is based on IOI organization request for control on USB connections 
-# and devices. 
-# Copyright (C) 2016 Behrad Eslamifar <b.eslamifar@cvak.ir> and IOI
-# This is properitary software and cant freely distributed.
 # 
 # dmagr script for manage deployment and puppet usage in yasa
 #
